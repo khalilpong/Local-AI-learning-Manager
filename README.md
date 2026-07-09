@@ -46,6 +46,9 @@ Open:
 http://127.0.0.1:8000
 ```
 
+On macOS you can also double-click `Local Memory.command` in Finder to
+start the server and open the app in one step.
+
 ## Ollama Setup
 
 Install Ollama and pull a local model:
@@ -82,18 +85,21 @@ export OLLAMA_MODEL=qwen2.5
 - `offline`: never call Ollama.
 - `ollama`: prefer Ollama; still fails gracefully if the service is down.
 
-`MEMORY_EMBEDDING_BACKEND` values:
+`MEMORY_EMBEDDING_BACKEND` values (default `auto`):
 
-- `hash`: deterministic local embeddings, no model download.
-- `sentence-transformers`: use a local sentence-transformers model.
-- `auto`: try sentence-transformers, then fall back to hash.
+- `auto`: use sentence-transformers when installed, otherwise hash.
+- `hash`: deterministic local embeddings with CJK bigrams, no model download.
+- `sentence-transformers`: require a local sentence-transformers model.
 
-For stronger semantic search:
+For stronger semantic search, just install the package and restart —
+stored vectors are versioned and rebuilt automatically on startup:
 
 ```bash
 pip install sentence-transformers
-export MEMORY_EMBEDDING_BACKEND=sentence-transformers
 ```
+
+You can also switch the Ollama model from the sidebar dropdown; the choice
+is persisted in SQLite and survives restarts.
 
 ## Tests
 

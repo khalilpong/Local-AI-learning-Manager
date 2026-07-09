@@ -47,7 +47,7 @@ Ollama Local LLM
 | 数据库 | SQLite |
 | 前端 | HTML + CSS + Vanilla JavaScript |
 | 模板渲染 | Jinja2 |
-| 语义检索 | 本地 hash embedding，后续可切换 sentence-transformers |
+| 语义检索 | 本地 hash embedding（含中文 bigram，版本化自动重建），装上 sentence-transformers 后自动启用 |
 | AI 总结/标签/问答 | Ollama 本地 LLM |
 | 测试 | pytest + FastAPI TestClient |
 | 后续桌面端方向 | Tauri 或 Electron |
@@ -264,6 +264,8 @@ UI 已做响应式布局，支持桌面和移动端宽度。
 - `GET /api/tags`（返回全部标签及使用次数）
 - `GET /api/search`（支持 `tag` 筛选参数）
 - `POST /api/ask`
+- `GET /api/models`（列出本机 Ollama 已安装模型及当前选用模型）
+- `PUT /api/settings`（切换 Ollama 模型，持久化到 SQLite）
 - `GET /api/study/queue`（获取当前到期的复习队列）
 - `POST /api/study/{note_id}/grade`（提交复习评分 again/good/easy）
 - `GET /api/stats`（学习统计：总数、本周、streak、待复习、今日已复习、14 天活动）
@@ -331,6 +333,12 @@ UI 已做响应式布局，支持桌面和移动端宽度。
 | Markdown 渲染 | 已完成 |
 | Markdown 导出 | 已完成 |
 | 键盘快捷键 | 已完成 |
+| 中文 bigram 检索优化 | 已完成 |
+| embedding 版本化自动重建 | 已完成 |
+| Ollama 模型选择（UI + 持久化） | 已完成 |
+| Prompt 优化（JSON 格式/低温度/语言跟随） | 已完成 |
+| macOS 双击启动器 | 已完成 |
+| 本地 git 仓库 | 已完成 |
 | 自动总结 | 已完成基础版 |
 | 自动标签 | 已完成基础版 |
 | 本地 embedding | 已完成 |
@@ -339,11 +347,11 @@ UI 已做响应式布局，支持桌面和移动端宽度。
 | Weekly Review | 已完成 |
 | Web UI | 已完成 MVP |
 | 响应式布局 | 已完成基础版 |
-| 单元测试/API 测试 | 已完成（18 项） |
+| 单元测试/API 测试 | 已完成（21 项） |
 | README | 已完成 |
 | 后续桌面端架构预留 | 已完成 |
-| GitHub 仓库 | 尚未创建 |
-| Tauri/Electron 桌面封装 | 尚未开始 |
+| GitHub 仓库 | 本地 main 已提交，远程待推送 |
+| Tauri/Electron 桌面封装 | 待安装 Rust 工具链 |
 
 ## 8. 验证结果
 
@@ -356,7 +364,7 @@ python3 -m pytest -q
 结果：
 
 ```text
-18 passed
+21 passed
 ```
 
 已验证内容：
@@ -369,6 +377,9 @@ python3 -m pytest -q
 - 新笔记自动进入复习队列；评分 `good` 后间隔至少 1 天并移出当前队列；评分 `again` 会重置连续记住次数并下调熟练度；无效评分返回 400，不存在的笔记返回 404。
 - 统计接口正确返回总数、待复习数、今日已复习数、streak 和 14 天活动。
 - Markdown 导出包含全部笔记的标题和正文。
+- 中文多字词查询（如"机器学习"）能把相关中文笔记排在无关笔记之前。
+- 向量版本过期时 `ensure_embeddings` 会重建并且幂等（第二次调用返回 0）。
+- 模型设置通过 `PUT /api/settings` 持久化，重启应用后仍然生效。
 - 搜索接口能返回相关笔记。
 - 问答接口能返回答案和引用来源。
 - Weekly Review 可以生成并持久化。
@@ -388,6 +399,8 @@ python3 -m pytest -q
 - `Export` 下载返回正确的 `Content-Disposition` 附件头和完整笔记内容。
 - 快捷键 `/`、`n`、`Esc` 行为正确，输入框内不误触发。
 - 移动端宽度（375px）无横向滚动溢出。
+- 启动时旧库（hash-v1 向量）被自动迁移到 hash-v2，健康检查显示 `embedding: hash-v2-384`，搜索分数正常。
+- 侧边栏模型下拉框正确列出本机 Ollama 已安装模型，切换 `deepseek-r1:14b` 后健康检查立即反映，写回 `qwen2.5` 同样生效。
 - 浏览器 console 无错误日志。
 
 ## 9. 运行与使用说明
@@ -400,17 +413,15 @@ python3 -m pytest -q
 pip install -r requirements.txt
 ```
 
-启动服务：
+**方式一（最简单）**：在 Finder 中双击项目根目录下的 `Local Memory.command`，会自动启动服务并打开浏览器；关闭那个终端窗口即停止服务。
+
+**方式二（命令行）**：
 
 ```bash
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-浏览器访问：
-
-```text
-http://127.0.0.1:8000
-```
+然后浏览器访问 `http://127.0.0.1:8000`。
 
 如果要启用 Ollama（可选，不启用时所有功能自动降级为本地 fallback）：
 
@@ -419,7 +430,15 @@ ollama pull qwen2.5
 ollama serve
 ```
 
-左侧边栏底部的 "Local only" 面板会显示 Ollama 当前状态（`ready` 或 `offline fallback`）。
+左侧边栏底部的 "Local only" 面板会显示 Ollama 当前状态（`ready` 或 `offline fallback`）；上方的 **Ollama model 下拉框**列出本机已安装的全部模型，切换后立即生效并持久保存（重启不丢）。想用哪个模型，先 `ollama pull <模型名>` 再在下拉框里选择即可。
+
+想获得更强的中英文语义检索（可选）：
+
+```bash
+pip install sentence-transformers
+```
+
+重启应用即可——embedding 后端默认为 `auto`，装好后自动启用，旧笔记的向量会在启动时自动重建，无需手动迁移。
 
 ### 9.2 日常使用流程（建议的学习工作流）
 
@@ -506,33 +525,31 @@ ollama serve
 
 验证：18 项 pytest 全部通过（新增 4 项覆盖复习调度、统计、导出），并在浏览器中实机验证了复习评分流转、统计实时刷新、Markdown 渲染、导出下载和快捷键，移动端布局无溢出。
 
-### 阶段 2：增强 AI 能力
+### 阶段 2：增强 AI 能力（已完成）
 
-- 接入 `sentence-transformers` 作为默认语义 embedding。
-- 支持用户选择 Ollama 模型。
-- 优化 prompt，使总结、标签、weekly review 更稳定。
-- 增加中文和英文混合笔记的检索优化。
+- [x] 中英文混合检索优化。分词器为相邻汉字生成二元组（bigram），使"机器学习"这类多字词能作为整体匹配，而不是散落的单字；已用中文笔记测试验证排序正确。
+- [x] embedding 版本化与自动重建。每条向量记录生成它的模型版本（当前 `hash-v2-384`），启动时自动检测并重建过期向量，保证查询向量和笔记向量始终可比。这也让后续切换 sentence-transformers 时无需手动迁移。
+- [x] embedding 后端默认值改为 `auto`：装好 `sentence-transformers` 后重启即自动启用（未安装时回落到 hash），旧向量会被自动重建。本机因未安装该库（依赖 torch 体积较大），当前实际运行 hash 后端。
+- [x] 支持用户选择 Ollama 模型。新增 `GET /api/models`（列出本机已安装模型）和 `PUT /api/settings`（切换模型并持久化到 SQLite，重启后保留）；侧边栏提供下拉框，实测切换 `deepseek-r1:14b` 生效并正确持久化。
+- [x] Prompt 优化：总结/标签改用 Ollama 的 `format: json` 强制 JSON 输出（不再依赖正则碰运气），温度调低（0.2/0.3）提升稳定性；摘要和回答要求跟随笔记/问题的语言（中文笔记出中文摘要）；问答和周报要求输出 Markdown（配合前端渲染）。
 
-### 阶段 3：桌面端封装
+### 阶段 3：桌面端封装（部分完成）
 
-建议使用 Tauri：
+- [x] macOS 双击启动器 `Local Memory.command`：Finder 中双击即启动服务并自动打开浏览器，自动复用已在运行的实例，关闭窗口即停止服务。已具备"像桌面应用一样使用"的体验。
+- [ ] Tauri 真正封装：本机尚未安装 Rust 工具链（`cargo`/`rustc`），安装后（`brew install rust` 或 rustup）可继续。方案不变：Tauri 启动 FastAPI 子进程 + WebView 加载 `http://127.0.0.1:8000`，数据库迁移到 `~/Library/Application Support/Local Memory/memory.db`（`MEMORY_DB_PATH` 已支持配置，无需改代码）。
 
-- Tauri 启动本地 FastAPI 后端。
-- Tauri WebView 加载本地 UI。
-- 数据库迁移到系统应用目录，例如 macOS：
+### 阶段 4：发布和展示（部分完成）
 
-```text
-~/Library/Application Support/Local Memory/memory.db
+- [x] 初始化 git 仓库：已在本地 `main` 分支完成首次提交，`.gitignore` 排除数据库、缓存和本地配置。
+- [ ] 在 GitHub 账号 `khalilpong` 下创建仓库：本机未安装 `gh` CLI 且推送需要你的凭证。你可以在 GitHub 网页上新建空仓库后执行：
+
+```bash
+git remote add origin git@github.com:khalilpong/local-memory.git
+git push -u origin main
 ```
 
-这样可以把当前本地 Web App 转成真正的桌面应用。
-
-### 阶段 4：发布和展示
-
-- 初始化 git 仓库。
-- 在 GitHub 账号 `khalilpong` 下创建仓库。
-- 编写更完整的项目截图和演示说明。
-- 准备简历项目描述。
+- [ ] 编写项目截图和演示说明。
+- [x] 简历项目描述（见第 12 节）。
 
 ## 12. 简历描述建议
 
