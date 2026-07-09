@@ -1,0 +1,202 @@
+from fastapi.testclient import TestClient
+
+from app.main import create_app
+
+
+def test_health_reports_local_dependencies(tmp_path, monkeypatch):
+    monkeypatch.setenv("MEMORY_DB_PATH", str(tmp_path / "api.db"))
+    app = create_app()
+    client = TestClient(app)
+
+    response = client.get("/api/health")
+
+    assert response.status_code == 200
+    assert response.json()["storage"] == "sqlite"
+    assert response.json()["local_only"] is True
+
+
+def test_homepage_renders_app_shell(tmp_path, monkeypatch):
+    monkeypatch.setenv("MEMORY_DB_PATH", str(tmp_path / "api.db"))
+    monkeypatch.setenv("MEMORY_AI_MODE", "offline")
+    app = create_app()
+    client = TestClient(app)
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Personal Memory" in response.text
+    assert "Local only" in response.text
+
+
+def test_favicon_does_not_log_404(tmp_path, monkeypatch):
+    monkeypatch.setenv("MEMORY_DB_PATH", str(tmp_path / "api.db"))
+    app = create_app()
+    client = TestClient(app)
+
+    response = client.get("/favicon.ico")
+
+    assert response.status_code == 204
+
+
+def test_create_and_search_note_through_api(tmp_path, monkeypatch):
+    monkeypatch.setenv("MEMORY_DB_PATH", str(tmp_path / "api.db"))
+    monkeypatch.setenv("MEMORY_AI_MODE", "offline")
+    app = create_app()
+    client = TestClient(app)
+
+    created = client.post(
+        "/api/notes",
+        json={
+            "title": "English sentence",
+            "content": "I am getting used to thinking in English every morning.",
+            "source": "english",
+        },
+    )
+
+    assert created.status_code == 201
+    assert created.json()["title"] == "English sentence"
+
+    searched = client.get("/api/search", params={"q": "English practice"})
+
+    assert searched.status_code == 200
+    assert searched.json()["results"][0]["title"] == "English sentence"
+
+
+def test_update_and_delete_note_through_api(tmp_path, monkeypatch):
+    monkeypatch.setenv("MEMORY_DB_PATH", str(tmp_path / "api.db"))
+    monkeypatch.setenv("MEMORY_AI_MODE", "offline")
+    app = create_app()
+    client = TestClient(app)
+
+    created = client.post(
+        "/api/notes",
+        json={"title": "Draft title", "content": "Draft content about FastAPI."},
+    ).json()
+    note_id = created["id"]
+
+    updated = client.put(
+        f"/api/notes/{note_id}",
+        json={"title": "Updated title", "content": "Updated content about SQLite."},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["title"] == "Updated title"
+    assert updated.json()["content"] == "Updated content about SQLite."
+
+    detail = client.get(f"/api/notes/{note_id}")
+    assert detail.status_code == 200
+    assert detail.json()["note"]["title"] == "Updated title"
+
+    deleted = client.delete(f"/api/notes/{note_id}")
+    assert deleted.status_code == 204
+
+    missing = client.get(f"/api/notes/{note_id}")
+    assert missing.status_code == 404
+
+    missing_update = client.put(f"/api/notes/{note_id}", json={"title": "Nope"})
+    assert missing_update.status_code == 404
+
+
+def test_tag_filtering_through_api(tmp_path, monkeypatch):
+    monkeypatch.setenv("MEMORY_DB_PATH", str(tmp_path / "api.db"))
+    monkeypatch.setenv("MEMORY_AI_MODE", "offline")
+    app = create_app()
+    client = TestClient(app)
+
+    client.post(
+        "/api/notes",
+        json={"title": "Python tips", "content": "Use context managers for files and connections."},
+    )
+    client.post(
+        "/api/notes",
+        json={"title": "Grocery list", "content": "Milk, bread, apples, and coffee."},
+    )
+
+    tags = client.get("/api/tags")
+    assert tags.status_code == 200
+    assert len(tags.json()["tags"]) > 0
+
+    first_tag = tags.json()["tags"][0]["tag"]
+    filtered = client.get("/api/notes", params={"tag": first_tag})
+    assert filtered.status_code == 200
+    assert all(first_tag in note["tags"] for note in filtered.json()["notes"])
+
+    filtered_search = client.get("/api/search", params={"q": "tips", "tag": first_tag})
+    assert filtered_search.status_code == 200
+
+
+def test_model_settings_persist_across_restarts(tmp_path, monkeypatch):
+    monkeypatch.setenv("MEMORY_DB_PATH", str(tmp_path / "api.db"))
+    monkeypatch.setenv("MEMORY_AI_MODE", "offline")
+    client = TestClient(create_app())
+
+    models = client.get("/api/models")
+    assert models.status_code == 200
+    assert models.json()["current"] == "qwen2.5"
+    assert models.json()["available"] is False
+
+    updated = client.put("/api/settings", json={"ollama_model": "llama3.1"})
+    assert updated.status_code == 200
+    assert updated.json()["ollama_model"] == "llama3.1"
+
+    health = client.get("/api/health")
+    assert health.json()["ollama_model"] == "llama3.1"
+
+    restarted = TestClient(create_app())
+    assert restarted.get("/api/models").json()["current"] == "llama3.1"
+
+
+def test_study_stats_and_export_endpoints(tmp_path, monkeypatch):
+    monkeypatch.setenv("MEMORY_DB_PATH", str(tmp_path / "api.db"))
+    monkeypatch.setenv("MEMORY_AI_MODE", "offline")
+    app = create_app()
+    client = TestClient(app)
+
+    created = client.post(
+        "/api/notes",
+        json={"title": "Study target", "content": "Reviewing notes builds retention."},
+    ).json()
+
+    queue = client.get("/api/study/queue")
+    assert queue.status_code == 200
+    assert queue.json()["notes"][0]["id"] == created["id"]
+
+    graded = client.post(f"/api/study/{created['id']}/grade", json={"grade": "good"})
+    assert graded.status_code == 200
+    assert graded.json()["interval_days"] >= 1.0
+
+    empty_queue = client.get("/api/study/queue")
+    assert empty_queue.json()["notes"] == []
+
+    bad_grade = client.post(f"/api/study/{created['id']}/grade", json={"grade": "meh"})
+    assert bad_grade.status_code == 400
+
+    missing = client.post("/api/study/99999/grade", json={"grade": "good"})
+    assert missing.status_code == 404
+
+    stats = client.get("/api/stats")
+    assert stats.status_code == 200
+    assert stats.json()["total_notes"] == 1
+    assert stats.json()["reviewed_today"] == 1
+
+    export = client.get("/api/export/markdown")
+    assert export.status_code == 200
+    assert "## Study target" in export.text
+
+
+def test_question_answer_endpoint_returns_sources(tmp_path, monkeypatch):
+    monkeypatch.setenv("MEMORY_DB_PATH", str(tmp_path / "api.db"))
+    monkeypatch.setenv("MEMORY_AI_MODE", "offline")
+    app = create_app()
+    client = TestClient(app)
+    client.post(
+        "/api/notes",
+        json={
+            "title": "Local privacy",
+            "content": "The app stores notes, embeddings, and summaries in local SQLite.",
+        },
+    )
+
+    response = client.post("/api/ask", json={"question": "Where is my data stored?"})
+
+    assert response.status_code == 200
+    assert response.json()["sources"][0]["title"] == "Local privacy"

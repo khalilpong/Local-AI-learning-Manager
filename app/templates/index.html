@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Local Memory</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="/">
+          <span class="brand-mark">LM</span>
+          <span>
+            <strong>Local Memory</strong>
+            <small>Private AI knowledge base</small>
+          </span>
+        </a>
+        <nav class="nav-list" aria-label="Main navigation">
+          <a href="#compose" class="active">Create</a>
+          <a href="#search">Search</a>
+          <a href="#study">Study</a>
+          <a href="#stats">Stats</a>
+          <a href="#ask">Ask</a>
+          <a href="#review">Weekly Review</a>
+        </nav>
+        <div class="model-panel">
+          <label for="modelSelect">Ollama model</label>
+          <select id="modelSelect" aria-label="Ollama model">
+            <option value="">Loading...</option>
+          </select>
+          <p class="model-status" id="modelStatus" role="status"></p>
+        </div>
+
+        <div class="privacy-panel">
+          <span class="status-dot"></span>
+          <div>
+            <strong>Local only</strong>
+            <p>SQLite on this machine. Ollama: {{ "ready" if health.ollama_available else "offline fallback" }}.</p>
+          </div>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <h1>Personal Memory</h1>
+            <p>Capture thoughts, retrieve context, and turn your week into review notes.</p>
+          </div>
+          <div class="topbar-actions">
+            <a class="ghost-button" href="/api/export/markdown" download>Export</a>
+            <button class="ghost-button" id="refreshNotes" type="button">Refresh</button>
+          </div>
+        </header>
+
+        <section class="grid">
+          <section class="panel compose-panel" id="compose">
+            <div class="section-heading">
+              <h2>Add note</h2>
+              <span>Auto summary and tags</span>
+            </div>
+            <form id="noteForm" class="stack">
+              <label>
+                Title
+                <input name="title" type="text" placeholder="FastAPI project idea" required maxlength="160">
+              </label>
+              <label>
+                Source
+                <input name="source" type="text" placeholder="project, english, tech" maxlength="80">
+              </label>
+              <label>
+                Note
+                <textarea name="content" placeholder="Write the thought, lesson, sentence, or technical note..." required></textarea>
+              </label>
+              <button type="submit">Save note</button>
+              <p class="form-status" id="noteStatus" role="status"></p>
+            </form>
+          </section>
+
+          <section class="panel search-panel" id="search">
+            <div class="section-heading">
+              <h2>Search notes</h2>
+              <span>Semantic and keyword ranking</span>
+            </div>
+            <form id="searchForm" class="inline-form">
+              <input name="q" type="search" placeholder="Search project ideas, English phrases, technical notes..." required>
+              <button type="submit">Search</button>
+            </form>
+            <div id="searchResults" class="result-list"></div>
+          </section>
+        </section>
+
+        <section class="grid study-grid">
+          <section class="panel" id="study">
+            <div class="section-heading">
+              <h2>Study queue</h2>
+              <span id="studyCount">Loading...</span>
+            </div>
+            <div id="studyCard" class="study-card"><p class="muted">Loading study queue...</p></div>
+          </section>
+
+          <section class="panel" id="stats">
+            <div class="section-heading">
+              <h2>Learning stats</h2>
+              <span>Local activity</span>
+            </div>
+            <div id="statsBox" class="stats-box"><p class="muted">Loading stats...</p></div>
+          </section>
+        </section>
+
+        <section class="grid lower-grid">
+          <section class="panel notes-panel">
+            <div class="section-heading">
+              <h2>Recent notes</h2>
+              <span id="noteCount">{{ notes|length }} loaded</span>
+            </div>
+            <div id="tagFilters" class="tag-filter-row"></div>
+            <div id="notesList" class="note-list">
+              {% for note in notes %}
+                <article class="note-card" data-note-id="{{ note.id }}">
+                  <div class="note-card-header">
+                    <h3>{{ note.title }}</h3>
+                    <time>{{ note.created_at[:10] }}</time>
+                  </div>
+                  <p>{{ note.summary }}</p>
+                  <div class="tag-row">
+                    {% for tag in note.tags %}
+                      <span>{{ tag }}</span>
+                    {% endfor %}
+                  </div>
+                  <div class="note-card-actions">
+                    <button type="button" class="link-button" data-action="view">View</button>
+                    <button type="button" class="link-button" data-action="edit">Edit</button>
+                    <button type="button" class="link-button danger" data-action="delete">Delete</button>
+                  </div>
+                </article>
+              {% endfor %}
+            </div>
+          </section>
+
+          <aside class="side-stack">
+            <section class="panel" id="ask">
+              <div class="section-heading">
+                <h2>Ask memory</h2>
+                <span>Cited local notes</span>
+              </div>
+              <form id="askForm" class="stack">
+                <textarea name="question" placeholder="What did I learn about local AI this week?" required></textarea>
+                <button type="submit">Ask</button>
+              </form>
+              <div id="answerBox" class="answer-box muted">Ask a question to see an answer and sources.</div>
+            </section>
+
+            <section class="panel" id="review">
+              <div class="section-heading">
+                <h2>Weekly review</h2>
+                <span>Generated locally</span>
+              </div>
+              <button id="reviewButton" class="accent-button" type="button">Generate this week</button>
+              <div id="reviewBox" class="review-box">
+                {% if reviews %}
+                  <strong>{{ reviews[0].week_start }} to {{ reviews[0].week_end }}</strong>
+                  <p>{{ reviews[0].content }}</p>
+                {% else %}
+                  <p class="muted">No weekly review yet.</p>
+                {% endif %}
+              </div>
+            </section>
+          </aside>
+        </section>
+      </main>
+    </div>
+
+    <div id="noteModal" class="modal-backdrop hidden">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-header">
+          <h2 id="modalTitle">Note</h2>
+          <button type="button" class="ghost-button" id="modalClose">Close</button>
+        </div>
+        <div id="modalBody" class="modal-body"></div>
+      </div>
+    </div>
+
+    <script src="{{ url_for('static', path='/app.js') }}"></script>
+  </body>
+</html>
