@@ -19,6 +19,30 @@ machine for summaries, tags, question answering, and weekly reviews.
 - Keyboard shortcuts: `/` search, `n` new note, `Esc` close dialog.
 - Keep all note data, embeddings, summaries, and reviews on your computer.
 
+## Screenshots
+
+![Dashboard on desktop](docs/screenshots/dashboard-desktop.png)
+
+Responsive layout on a phone-sized window: [dashboard-mobile.png](docs/screenshots/dashboard-mobile.png)
+
+## Demo Walkthrough
+
+1. **Capture** — press `n`, type a thought (Markdown supported), hit
+   *Save note*. A one-sentence summary and topic tags are generated
+   automatically (Ollama when available, local fallback otherwise).
+2. **Study** — the note joins the spaced-repetition queue. Recall it from
+   the title, click *Show answer*, then grade yourself *Again / Good /
+   Easy*. Intervals grow like Anki (simplified SM-2).
+3. **Track** — the stats panel shows your day streak, due reviews, and a
+   14-day activity chart.
+4. **Retrieve** — press `/` and search in English or Chinese (CJK bigram
+   matching), filter by tag chips, or open a note to see its most similar
+   neighbours.
+5. **Ask** — question your own notes in natural language and get a cited,
+   Markdown-formatted answer.
+6. **Reflect** — generate a weekly review with themes, ideas to revisit,
+   and next actions; export everything to Markdown any time.
+
 ## Architecture
 
 - `FastAPI` backend, bound to `127.0.0.1` by default.
@@ -109,16 +133,25 @@ python -m pytest -q
 
 The service tests use fake AI clients and do not require Ollama.
 
-## Desktop App Path
+## Desktop App
 
-The current app is intentionally desktop-ready:
+Two ways to run Local Memory like a desktop app today:
 
-- The backend binds only to `127.0.0.1`.
-- Storage paths are configurable.
-- UI talks to stable local HTTP APIs.
-- A future Tauri shell can launch the FastAPI process and point a webview to it.
-- The database can move to an OS app data directory such as
-  `~/Library/Application Support/Local Memory/memory.db`.
+- **Native window** (WKWebView via pywebview, no browser chrome):
+
+  ```bash
+  pip install pywebview
+  python3 desktop.py
+  ```
+
+- **One-click launcher**: double-click `Local Memory.command` in Finder to
+  start the server and open the app in your browser.
+
+The architecture also stays ready for a Tauri shell (requires the Rust
+toolchain): the backend binds only to `127.0.0.1`, storage paths are
+configurable (`MEMORY_DB_PATH` can point at
+`~/Library/Application Support/Local Memory/memory.db`), and the UI talks
+to stable local HTTP APIs.
 
 Resume line:
 

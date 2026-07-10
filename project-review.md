@@ -338,6 +338,8 @@ UI 已做响应式布局，支持桌面和移动端宽度。
 | Ollama 模型选择（UI + 持久化） | 已完成 |
 | Prompt 优化（JSON 格式/低温度/语言跟随） | 已完成 |
 | macOS 双击启动器 | 已完成 |
+| 原生桌面窗口（pywebview） | 已完成 |
+| 项目截图与演示说明 | 已完成 |
 | 本地 git 仓库 | 已完成 |
 | 自动总结 | 已完成基础版 |
 | 自动标签 | 已完成基础版 |
@@ -351,7 +353,7 @@ UI 已做响应式布局，支持桌面和移动端宽度。
 | README | 已完成 |
 | 后续桌面端架构预留 | 已完成 |
 | GitHub 仓库 | 本地 main 已提交，远程待推送 |
-| Tauri/Electron 桌面封装 | 待安装 Rust 工具链 |
+| Tauri .app 打包 | 可选项，待安装 Rust 工具链 |
 
 ## 8. 验证结果
 
@@ -415,7 +417,16 @@ pip install -r requirements.txt
 
 **方式一（最简单）**：在 Finder 中双击项目根目录下的 `Local Memory.command`，会自动启动服务并打开浏览器；关闭那个终端窗口即停止服务。
 
-**方式二（命令行）**：
+**方式二（原生桌面窗口）**：
+
+```bash
+pip install pywebview
+python3 desktop.py
+```
+
+应用会在独立的原生窗口中打开（无浏览器地址栏），关闭窗口即退出。
+
+**方式三（命令行）**：
 
 ```bash
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
@@ -533,10 +544,12 @@ pip install sentence-transformers
 - [x] 支持用户选择 Ollama 模型。新增 `GET /api/models`（列出本机已安装模型）和 `PUT /api/settings`（切换模型并持久化到 SQLite，重启后保留）；侧边栏提供下拉框，实测切换 `deepseek-r1:14b` 生效并正确持久化。
 - [x] Prompt 优化：总结/标签改用 Ollama 的 `format: json` 强制 JSON 输出（不再依赖正则碰运气），温度调低（0.2/0.3）提升稳定性；摘要和回答要求跟随笔记/问题的语言（中文笔记出中文摘要）；问答和周报要求输出 Markdown（配合前端渲染）。
 
-### 阶段 3：桌面端封装（部分完成）
+### 阶段 3：桌面端封装（已完成核心目标）
 
-- [x] macOS 双击启动器 `Local Memory.command`：Finder 中双击即启动服务并自动打开浏览器，自动复用已在运行的实例，关闭窗口即停止服务。已具备"像桌面应用一样使用"的体验。
-- [ ] Tauri 真正封装：本机尚未安装 Rust 工具链（`cargo`/`rustc`），安装后（`brew install rust` 或 rustup）可继续。方案不变：Tauri 启动 FastAPI 子进程 + WebView 加载 `http://127.0.0.1:8000`，数据库迁移到 `~/Library/Application Support/Local Memory/memory.db`（`MEMORY_DB_PATH` 已支持配置，无需改代码）。
+- [x] 原生桌面窗口 `desktop.py`：基于 `pywebview`（macOS 上使用系统 WKWebView），后端 FastAPI 在同一进程的后台线程中启动，UI 显示在独立原生窗口里（无浏览器地址栏/标签页），关窗即优雅停止服务。运行方式：`pip install pywebview && python3 desktop.py`。已实测窗口正常打开、后端健康检查通过、退出干净。
+- [x] macOS 双击启动器 `Local Memory.command`：Finder 中双击即启动服务并自动打开浏览器，自动复用已在运行的实例。
+- [x] 数据库位置可配置：`MEMORY_DB_PATH` 指到 `~/Library/Application Support/Local Memory/memory.db` 即完成应用目录迁移，无需改代码。
+- [ ]（可选）Tauri 打包成 .app 安装包：需要先安装 Rust 工具链（rustup 或 `brew install rust`），适合作为发布环节再做；当前 pywebview 方案已提供等价的桌面使用体验。
 
 ### 阶段 4：发布和展示（部分完成）
 
@@ -548,7 +561,7 @@ git remote add origin git@github.com:khalilpong/local-memory.git
 git push -u origin main
 ```
 
-- [ ] 编写项目截图和演示说明。
+- [x] 编写项目截图和演示说明：截图保存在 `docs/screenshots/`（桌面版 + 移动版布局），README 新增 Screenshots 和 Demo Walkthrough 章节（六步演示流程：记录 → 复习 → 统计 → 检索 → 问答 → 周报）。
 - [x] 简历项目描述（见第 12 节）。
 
 ## 12. 简历描述建议
