@@ -564,6 +564,51 @@ pip install sentence-transformers
 - [x] 编写项目截图和演示说明：截图保存在 `docs/screenshots/`（桌面版 + 移动版布局），README 新增 Screenshots 和 Demo Walkthrough 章节（六步演示流程：记录 → 复习 → 统计 → 检索 → 问答 → 周报）。
 - [x] 简历项目描述（见第 12 节）。
 
+### 阶段 5：完整学习工作流升级（设计完成，实施待启动）
+
+本阶段已经完成需求分析和架构选择，正式设计见：
+
+`docs/superpowers/specs/2026-07-11-learning-workflow-upgrade-design.md`
+
+总体分工确定为：Notion 管理课程、任务和正式笔记；ChatGPT 负责互动讲解、测验和综合分析；Local Memory 负责原始资料、统一检索、引用、复习卡和长期记忆。
+
+本轮明确暂不实施 VPS、远程同步或公开部署，所有新增功能继续保持本地优先。
+
+#### 5A：课程资料库与本地导入
+
+- [x] 完成功能范围、数据模型、导入状态和验收标准设计。
+- [ ] 增加课程/学期层级和课程筛选。
+- [ ] 增加受管理的本地原始文件库。
+- [ ] 导入 Markdown、TXT、PDF、DOCX、PPTX，并接收和归档常见图片；图片在 5B OCR 完成前标记为 `ocr_required`。
+- [ ] 保存页码、幻灯片和标题层级等引用位置。
+- [ ] 使用 SHA-256 去重并支持失败重试。
+- [ ] 将文档分块加入统一搜索和问答。
+
+#### 5B：截图、网页与 Notion
+
+- [x] 完成 OCR Provider、网页安全边界和 Notion 只读同步设计。
+- [ ] 使用 macOS Vision 或可选 Tesseract 完成截图 OCR。
+- [ ] 增加网页正文采集，阻止本地地址和私有网络目标。
+- [ ] 使用受限的 Notion internal connection 同步显式授权页面。
+- [ ] 保证同步幂等，并将远端删除映射为本地归档。
+
+#### 5C：可控复习与 ChatGPT Bridge
+
+- [x] 完成复习卡候选和 ChatGPT Study Pack 交接格式设计。
+- [ ] 将复习卡与笔记解耦，迁移现有复习历史。
+- [ ] 新内容只生成候选卡，由用户批准后进入复习。
+- [ ] 导出带来源引用的 `study-pack.md` 和课程指令。
+- [ ] 导入经用户审核的 ChatGPT Markdown 学习结果。
+
+#### 5D：可靠性和学习仪表盘
+
+- [ ] 增加课程学习仪表盘、弱项和预计复习负担。
+- [ ] 增加本地备份与恢复。
+- [ ] 增加数据库 schema 版本和事务迁移。
+- [ ] 增加解析器、OCR、Notion 和存储诊断。
+
+当前进度边界：设计文档已经写入，代码实施尚未开始；下一步是在书面规格审核通过后，为 5A 编写测试驱动的实施计划。
+
 ## 12. 简历描述建议
 
 英文简历可写：
@@ -591,4 +636,4 @@ Built a local-first AI personal memory app with FastAPI, SQLite, semantic search
 - 数据保存在本地
 - 具备后续桌面端封装基础
 
-下一步建议优先验证并默认启用更强的 `sentence-transformers` 中英文语义模型，再补充 Markdown/PDF 导入和 Tauri `.app` 打包流程。
+下一步进入阶段 5A：先完成课程资料库和多格式本地导入，再依次实现 Notion 只读同步、可控复习卡和 ChatGPT Study Pack；VPS 相关功能暂缓。
