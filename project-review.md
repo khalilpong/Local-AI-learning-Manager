@@ -4,7 +4,7 @@
 
 本项目是一个本地优先的 AI 个人知识库应用，目标是让用户把每天的想法、项目记录、英语句子、技术笔记等内容保存到本机，并通过 AI 辅助完成检索、总结、标签生成、问答和每周复盘。
 
-项目目前采用本地 Web App 形态：用户在浏览器中访问本机地址 `http://127.0.0.1:8000` 使用应用。后续可以在此基础上封装为真正的桌面端应用，例如使用 Tauri 或 Electron。
+项目目前同时提供本地 Web App 和原生窗口两种运行形态：用户既可以在浏览器中访问 `http://127.0.0.1:8000`，也可以通过 `pywebview` 在独立桌面窗口中使用。后续仍可使用 Tauri 打包为可分发的 `.app` 安装包。
 
 ## 2. 项目定位
 
@@ -50,7 +50,7 @@ Ollama Local LLM
 | 语义检索 | 本地 hash embedding（含中文 bigram，版本化自动重建），装上 sentence-transformers 后自动启用 |
 | AI 总结/标签/问答 | Ollama 本地 LLM |
 | 测试 | pytest + FastAPI TestClient |
-| 后续桌面端方向 | Tauri 或 Electron |
+| 桌面端 | pywebview 原生窗口；后续可升级为 Tauri 安装包 |
 
 ### 3.3 本地隐私设计
 
@@ -217,6 +217,9 @@ UI 已做响应式布局，支持桌面和移动端宽度。
 ├── README.md
 ├── requirements.txt
 ├── .env.example
+├── desktop.py
+├── Local Memory.command
+├── project-review.md
 ├── app
 │   ├── main.py
 │   ├── db.py
@@ -235,7 +238,9 @@ UI 已做响应式布局，支持桌面和移动端宽度。
 │   ├── test_api.py
 │   └── test_memory_service.py
 └── docs
-    ├── project-review.md
+    ├── screenshots
+    │   ├── dashboard-desktop.png
+    │   └── dashboard-mobile.png
     └── superpowers
         ├── specs
         └── plans
@@ -352,7 +357,7 @@ UI 已做响应式布局，支持桌面和移动端宽度。
 | 单元测试/API 测试 | 已完成（21 项） |
 | README | 已完成 |
 | 后续桌面端架构预留 | 已完成 |
-| GitHub 仓库 | 本地 main 已提交，远程待推送 |
+| GitHub 仓库 | 已建立：`khalilpong/Local-AI-learning-Manager` |
 | Tauri .app 打包 | 可选项，待安装 Rust 工具链 |
 
 ## 8. 验证结果
@@ -511,7 +516,7 @@ pip install sentence-transformers
 - UI 是基础生产力工具风格，还可以继续优化视觉和交互细节。
 - 尚未加入文件导入功能，例如 Markdown、PDF、网页剪藏。
 - 尚未做真正桌面端安装包。
-- 尚未创建 GitHub 远程仓库。
+- 尚未配置 GitHub Actions 等持续集成流程。
 - 当前没有多用户和账号系统，因为项目目标是本地个人使用。
 
 ## 11. 后续开发计划
@@ -554,12 +559,7 @@ pip install sentence-transformers
 ### 阶段 4：发布和展示（部分完成）
 
 - [x] 初始化 git 仓库：已在本地 `main` 分支完成首次提交，`.gitignore` 排除数据库、缓存和本地配置。
-- [ ] 在 GitHub 账号 `khalilpong` 下创建仓库：本机未安装 `gh` CLI 且推送需要你的凭证。你可以在 GitHub 网页上新建空仓库后执行：
-
-```bash
-git remote add origin git@github.com:khalilpong/local-memory.git
-git push -u origin main
-```
+- [x] GitHub 远程仓库已建立：`khalilpong/Local-AI-learning-Manager`。本地代码通过独立发布分支和 Pull Request 合入 `main`，保留远端初始提交历史，不使用强制推送。
 
 - [x] 编写项目截图和演示说明：截图保存在 `docs/screenshots/`（桌面版 + 移动版布局），README 新增 Screenshots 和 Demo Walkthrough 章节（六步演示流程：记录 → 复习 → 统计 → 检索 → 问答 → 周报）。
 - [x] 简历项目描述（见第 12 节）。
@@ -591,4 +591,4 @@ Built a local-first AI personal memory app with FastAPI, SQLite, semantic search
 - 数据保存在本地
 - 具备后续桌面端封装基础
 
-下一步建议优先完善“编辑/删除笔记”和“sentence-transformers 语义模型”，然后再进行 Tauri 桌面端封装。
+下一步建议优先验证并默认启用更强的 `sentence-transformers` 中英文语义模型，再补充 Markdown/PDF 导入和 Tauri `.app` 打包流程。
