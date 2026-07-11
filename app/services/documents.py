@@ -161,12 +161,16 @@ def _parse_text(path: Path) -> list[LocatedText]:
 
 def _parse_pdf(path: Path) -> list[LocatedText]:
     from pypdf import PdfReader
+    from pypdf.errors import PyPdfError
 
     blocks: list[LocatedText] = []
-    for index, page in enumerate(PdfReader(str(path)).pages, start=1):
-        content = _normalize(page.extract_text() or "")
-        if content:
-            blocks.append(LocatedText(content, f"page {index}"))
+    try:
+        for index, page in enumerate(PdfReader(str(path)).pages, start=1):
+            content = _normalize(page.extract_text() or "")
+            if content:
+                blocks.append(LocatedText(content, f"page {index}"))
+    except PyPdfError as exc:
+        raise DocumentParseError(f"Could not parse PDF: {exc}") from exc
     return blocks
 
 
