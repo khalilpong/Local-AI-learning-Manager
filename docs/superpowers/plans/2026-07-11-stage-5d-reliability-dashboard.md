@@ -57,4 +57,4 @@
 
 - [x] Run all tests, compileall, JavaScript syntax, diff checks, backup round trip, and browser QA at `1280x800` and `390x900`.
 - [x] Update verified progress and residual limitations only.
-- [ ] Push `codex/stage-5d-reliability-dashboard` to `khalilpong/Local-AI-learning-Manager` without merging `main`.
+- [x] Push `codex/stage-5d-reliability-dashboard` to `khalilpong/Local-AI-learning-Manager` without merging `main`.
