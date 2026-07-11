@@ -10,7 +10,8 @@ machine for summaries, tags, question answering, and weekly reviews.
 - Organize notes and source files by course and term.
 - Import Markdown, TXT, PDF, DOCX, PPTX, and common image files into a managed local library.
 - Automatically summarize and tag notes (regenerated on every edit).
-- Review notes with a spaced-repetition study queue (simplified SM-2, like Anki).
+- Review approved cards with a spaced-repetition queue (simplified SM-2, like Anki).
+- Export cited course Study Packs for ChatGPT and import reviewed Markdown results.
 - Track learning stats: day streak, notes per week, due reviews, 14-day activity.
 - Search notes and document chunks together with local semantic embeddings plus keyword matching.
 - Filter notes and search results by tag.
@@ -32,9 +33,9 @@ Responsive layout on a phone-sized window: [dashboard-mobile.png](docs/screensho
 1. **Capture** — create a course, import existing study files, or press `n` and type a thought (Markdown supported), then hit
    *Save note*. A one-sentence summary and topic tags are generated
    automatically (Ollama when available, local fallback otherwise).
-2. **Study** — the note joins the spaced-repetition queue. Recall it from
-   the title, click *Show answer*, then grade yourself *Again / Good /
-   Easy*. Intervals grow like Anki (simplified SM-2).
+2. **Study** — new notes and document chunks enter the candidate inbox. Edit,
+   approve, or reject them; only approved cards enter the queue. Reveal the
+   answer, then grade yourself *Again / Good / Easy*.
 3. **Track** — the stats panel shows your day streak, due reviews, and a
    14-day activity chart.
 4. **Retrieve** — press `/` and search in English or Chinese (CJK bigram
@@ -154,6 +155,40 @@ library with `failed` status and a readable error; use **Retry** after replacing
 or repairing the parser environment. Search and Ask can be limited to one
 course, and document sources include the original filename plus their heading,
 page, paragraph, or slide label.
+
+## Review Cards And ChatGPT
+
+Study cards are independent from notes. Existing review history is migrated to
+active cards on first startup after the upgrade. New notes and indexed document
+chunks create `candidate` cards only; each candidate must be edited/approved or
+rejected before it can enter spaced repetition. Active cards can also be
+suspended without deleting their source note or document.
+
+For ChatGPT Study Mode or a ChatGPT Project:
+
+1. Select a course under **ChatGPT Study Pack** and download its Markdown pack.
+2. Upload that file to ChatGPT. It contains local notes, document excerpts,
+   citations, current cards, and reusable project instructions.
+3. Review ChatGPT's result and keep it in this structure:
+
+```markdown
+# Local Memory Study Result
+## Reviewed Note
+Title: Example
+Source: lecture.pdf · page 2
+### Content
+Reviewed content
+## Card Candidate
+Prompt: Question
+Source: lecture.pdf · page 2
+### Answer
+Answer text
+```
+
+4. Import the reviewed `.md` file. Notes are saved locally and all imported
+   cards remain candidates until approved.
+
+This bridge does not use an OpenAI API key and never uploads automatically.
 
 ## Tests
 

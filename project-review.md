@@ -287,8 +287,10 @@ UI 已做响应式布局，支持桌面和移动端宽度。
 - `GET /api/library/documents/{id}` / `POST /api/library/documents/{id}/retry`（详情与失败重试）
 - `POST /api/library/capture`（网页正文采集，带 SSRF 防护）
 - `GET /api/notion/status` / `POST /api/notion/sync`（Notion 只读同步状态与触发）
-- `GET /api/study/queue`（获取当前到期的复习队列）
-- `POST /api/study/{note_id}/grade`（提交复习评分 again/good/easy）
+- `GET /api/study/candidates`（获取待审批候选卡）
+- `PUT /api/study/cards/{card_id}/approve` / `POST .../reject`（审批或拒绝候选卡）
+- `GET /api/study/queue` / `POST /api/study/cards/{card_id}/grade`（独立卡片队列与评分）
+- `GET /api/study-pack` / `POST /api/study-pack/import`（课程 Study Pack 导出和审核结果导入）
 - `GET /api/stats`（学习统计：总数、本周、streak、待复习、今日已复习、14 天活动）
 - `GET /api/export/markdown`（导出全部笔记为 Markdown 文件）
 - `GET /api/reviews/weekly`
@@ -375,7 +377,7 @@ UI 已做响应式布局，支持桌面和移动端宽度。
 | Weekly Review | 已完成 |
 | Web UI | 已完成 MVP |
 | 响应式布局 | 已完成基础版 |
-| 单元测试/API 测试 | 已完成（71 项） |
+| 单元测试/API 测试 | 已完成（84 项） |
 | README | 已完成 |
 | 后续桌面端架构预留 | 已完成 |
 | GitHub 仓库 | 已建立：`khalilpong/Local-AI-learning-Manager` |
@@ -392,7 +394,7 @@ python3 -m pytest -q
 结果：
 
 ```text
-71 passed
+84 passed
 ```
 
 已验证内容：
@@ -535,7 +537,7 @@ pip install sentence-transformers
 
 - 默认 embedding 是 hash embedding，语义理解能力不如真正的 sentence-transformers 模型。
 - UI 是基础生产力工具风格，还可以继续优化视觉和交互细节。
-- 复习卡目前仍与笔记耦合（5C 将解耦为独立候选/审批模型）；文档分块尚未生成复习卡。
+- 复习卡已与笔记解耦；新笔记和文档分块只生成候选卡，批准后才进入复习。
 - OCR 依赖本机安装 pyobjc（macOS Vision）；未安装时图片保持 `ocr_required`。
 - Notion 同步和网页采集需要真实令牌/外网，未在当前沙箱做端到端联网验证。
 - 尚未做真正桌面端安装包（.app），当前提供 pywebview 原生窗口和双击启动器。
@@ -620,13 +622,13 @@ pip install sentence-transformers
 
 验证：71 项 pytest 全部通过（新增 26 项覆盖 OCR、网页采集、SSRF 拒绝、Notion 幂等/归档/令牌保护）；浏览器实机验证了网页采集表单的 SSRF 拒绝提示、Notion 未配置时的禁用与提示、`archived_at` 迁移在既有库上无损、移动端无溢出、控制台无错误。因沙箱 DNS 将外网域名解析为私有地址，真实外网抓取与真实 Notion 令牌无法在此环境端到端验证，但索引与同步逻辑均以注入依赖完整覆盖。
 
-#### 5C：可控复习与 ChatGPT Bridge
+#### 5C：可控复习与 ChatGPT Bridge（已完成）
 
 - [x] 完成复习卡候选和 ChatGPT Study Pack 交接格式设计。
-- [ ] 将复习卡与笔记解耦，迁移现有复习历史。
-- [ ] 新内容只生成候选卡，由用户批准后进入复习。
-- [ ] 导出带来源引用的 `study-pack.md` 和课程指令。
-- [ ] 导入经用户审核的 ChatGPT Markdown 学习结果。
+- [x] 将复习卡与笔记解耦，幂等迁移现有复习历史和调度参数。
+- [x] 新笔记和文档 chunk 只生成候选卡，由用户编辑、批准或拒绝；active 卡可暂停。
+- [x] 导出带课程资料、来源位置、现有卡和可复用课程指令的 `study-pack.md`。
+- [x] 导入经用户审核的结构化 ChatGPT Markdown；笔记和候选卡保持本地且不会自动激活。
 
 #### 5D：可靠性和学习仪表盘
 
@@ -635,7 +637,7 @@ pip install sentence-transformers
 - [ ] 增加数据库 schema 版本和事务迁移。
 - [ ] 增加解析器、OCR、Notion 和存储诊断。
 
-当前进度边界：5A 与 5B 均已完整实现、提交并通过 `71 passed` 自动化测试。5A（课程库与本地导入）经桌面 + 移动浏览器实机验证：创建课程 → 导入 Markdown（3 个按标题分块的 chunk）→ SHA-256 去重 → 统一搜索返回带「课程 · 标题层级」引用并高亮 → 课程范围问答只召回该课程 chunk。5B（截图 OCR、网页采集、Notion 只读同步）逻辑以注入依赖完整测试，SSRF 拒绝、Notion 未配置提示、`archived_at` 迁移均经实机验证；真实外网抓取和真实 Notion 令牌因沙箱网络隔离无法在此端到端验证。下一步进入 5C（复习卡与笔记解耦、候选审批、ChatGPT Study Pack 导出/导入）。
+当前进度边界：5A、5B、5C 均已实现。5C 通过 `84 passed` 自动化测试，覆盖旧历史迁移、候选状态转换、文档候选幂等、卡片调度、Study Pack 引用、严格 Markdown 导入和隐私字段排除。浏览器实测完成“创建课程/笔记 → 只产生候选 → 编辑批准 → active queue 展开评分 → Study Pack 下载”；桌面 `1280x800` 与手机 `390x900` 均无横向溢出且控制台无 warning/error。浏览器控制接口不支持设置本地文件输入，真实 `.md` 上传由 FastAPI multipart 集成测试覆盖。下一步进入 5D（课程仪表盘、备份恢复、schema 版本和诊断）。
 
 ## 12. 简历描述建议
 
@@ -664,4 +666,4 @@ Built a local-first AI personal memory app with FastAPI, SQLite, semantic search
 - 数据保存在本地
 - 具备后续桌面端封装基础
 
-下一步进入阶段 5A：先完成课程资料库和多格式本地导入，再依次实现 Notion 只读同步、可控复习卡和 ChatGPT Study Pack；VPS 相关功能暂缓。
+下一步进入阶段 5D：完成课程学习仪表盘、本地备份恢复、schema 版本迁移和运行诊断；VPS 相关功能继续暂缓。

@@ -59,7 +59,7 @@ grade(card_id: int, grade: str) -> dict
 
 Approval may edit prompt/answer and sets `due_at` to now. Grading retains the current Again/Good/Easy schedule.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run focused and full tests, then commit `Add independent study cards`.
 
@@ -89,7 +89,7 @@ Expected: new notes appear directly in the old queue and documents create no can
 
 For a note, use its title as prompt and full content as answer. For each document chunk, use `Review <source title> at <location label>` as prompt, chunk content as answer, and preserve the source label. Replace a document's non-reviewed candidates transactionally after successful re-indexing.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 Run full tests and commit `Generate review card candidates`.
 
@@ -125,7 +125,7 @@ Map missing cards to 404, invalid state transitions/grades to 400, and return ca
 
 Add a candidate inbox with Edit/Approve/Reject and show active card prompt, answer, citation, and Again/Good/Easy controls. Candidate approval must refresh both inbox and queue.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 Run API and full tests, then commit `Add candidate approval workflow`.
 
@@ -175,7 +175,7 @@ Parse headings and field prefixes line by line; do not execute HTML or interpret
 
 Provide course-scoped Study Pack download and `.md` import controls. Display imported note/card counts and refresh candidates.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 Run bridge, API, and full tests, then commit `Add ChatGPT study pack bridge`.
 
@@ -188,11 +188,11 @@ Run bridge, API, and full tests, then commit `Add ChatGPT study pack bridge`.
 - Modify: `project-review.md`
 - Modify: this plan
 
-- [ ] **Step 1: Update documentation from verified behavior**
+- [x] **Step 1: Update documentation from verified behavior**
 
 Document candidate states, migration behavior, Study Pack workflow, Markdown import format, privacy boundary, and unsupported automatic ChatGPT upload.
 
-- [ ] **Step 2: Run final verification**
+- [x] **Step 2: Run final verification**
 
 ```bash
 /Library/Frameworks/Python.framework/Versions/3.13/bin/python3 -m pytest -q
@@ -201,7 +201,7 @@ node --check app/static/app.js
 git diff --check
 ```
 
-- [ ] **Step 3: Run browser QA**
+- [x] **Step 3: Run browser QA**
 
 At desktop `1280x800` and mobile `390x900`, verify: create note -> candidate only -> edit/approve -> active queue -> reveal/grade; export Study Pack; import structured result; no console errors or horizontal overflow.
 
