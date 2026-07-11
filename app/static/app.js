@@ -14,6 +14,8 @@ const modelSelect = document.querySelector("#modelSelect");
 const modelStatus = document.querySelector("#modelStatus");
 const studyCard = document.querySelector("#studyCard");
 const studyCount = document.querySelector("#studyCount");
+const candidateList = document.querySelector("#candidateList");
+const candidateCount = document.querySelector("#candidateCount");
 const statsBox = document.querySelector("#statsBox");
 const noteModal = document.querySelector("#noteModal");
 const modalTitle = document.querySelector("#modalTitle");
@@ -346,7 +348,7 @@ let studyRevealed = false;
 async function loadStudyQueue() {
   try {
     const data = await requestJson("/api/study/queue?limit=20");
-    studyQueue = data.notes;
+    studyQueue = data.cards;
     studyRevealed = false;
     renderStudyCard();
   } catch (error) {
@@ -358,15 +360,15 @@ function renderStudyCard() {
   studyCount.textContent = `${studyQueue.length} due`;
   if (!studyQueue.length) {
     studyCard.innerHTML =
-      "<p class='muted'>Nothing due right now. New notes join the queue automatically.</p>";
+      "<p class='muted'>Nothing due right now. Approve candidates to add cards.</p>";
     return;
   }
-  const note = studyQueue[0];
+  const card = studyQueue[0];
   if (!studyRevealed) {
     studyCard.innerHTML = `
-      <span class="study-label">Can you recall this note?</span>
-      <h3>${escapeHtml(note.title)}</h3>
-      <div class="tag-row">${renderTags(note.tags)}</div>
+      <span class="study-label">Can you answer this card?</span>
+      <h3>${escapeHtml(card.prompt)}</h3>
+      <p class="study-source">${escapeHtml(card.source_label || card.course_name || "Local Memory")}</p>
       <button type="button" id="studyReveal">Show answer</button>
     `;
     studyCard.querySelector("#studyReveal").addEventListener("click", () => {
@@ -375,26 +377,29 @@ function renderStudyCard() {
     });
   } else {
     studyCard.innerHTML = `
-      <h3>${escapeHtml(note.title)}</h3>
-      <div class="md-content study-answer">${renderMarkdown(note.content)}</div>
+      <h3>${escapeHtml(card.prompt)}</h3>
+      <div class="md-content study-answer">${renderMarkdown(card.answer)}</div>
+      <p class="study-source">${escapeHtml(card.source_label || card.course_name || "Local Memory")}</p>
       <div class="study-grades">
         <button type="button" class="grade-again" data-grade="again">Again</button>
         <button type="button" class="grade-good" data-grade="good">Good</button>
         <button type="button" class="grade-easy" data-grade="easy">Easy</button>
       </div>
+      <button type="button" class="link-button study-suspend" id="studySuspend">Suspend card</button>
       <p class="muted study-hint">Again: soon again · Good: ~1 day+ · Easy: ~3 days+</p>
     `;
     studyCard.querySelectorAll("[data-grade]").forEach((button) => {
       button.addEventListener("click", () => gradeCurrentNote(button.dataset.grade));
     });
+    studyCard.querySelector("#studySuspend").addEventListener("click", suspendCurrentCard);
   }
 }
 
 async function gradeCurrentNote(grade) {
-  const note = studyQueue[0];
-  if (!note) return;
+  const card = studyQueue[0];
+  if (!card) return;
   try {
-    await requestJson(`/api/study/${note.id}/grade`, {
+    await requestJson(`/api/study/cards/${card.id}/grade`, {
       method: "POST",
       body: JSON.stringify({ grade }),
     });
@@ -410,6 +415,90 @@ async function gradeCurrentNote(grade) {
     studyCard.innerHTML = `<p class='muted'>${escapeHtml(error.message)}</p>`;
   }
 }
+
+async function suspendCurrentCard() {
+  const card = studyQueue[0];
+  if (!card) return;
+  try {
+    await requestJson(`/api/study/cards/${card.id}/suspend`, { method: "POST" });
+    studyQueue.shift();
+    studyRevealed = false;
+    renderStudyCard();
+    loadStats();
+  } catch (error) {
+    studyCard.innerHTML = `<p class='muted'>${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function renderCandidate(card) {
+  return `
+    <form class="candidate-item" data-card-id="${card.id}">
+      <div class="candidate-meta">
+        <span>${escapeHtml(card.course_name || "Uncategorized")}</span>
+        <span>${escapeHtml(card.source_label || "Local note")}</span>
+      </div>
+      <label>
+        Prompt
+        <input name="prompt" value="${escapeHtml(card.prompt)}" required maxlength="1000">
+      </label>
+      <label>
+        Answer
+        <textarea name="answer" class="candidate-answer" required>${escapeHtml(card.answer)}</textarea>
+      </label>
+      <div class="candidate-actions">
+        <button type="submit">Approve</button>
+        <button type="button" class="ghost-button" data-reject-card>Reject</button>
+      </div>
+    </form>
+  `;
+}
+
+async function loadCandidates() {
+  try {
+    const data = await requestJson("/api/study/candidates?limit=100");
+    candidateCount.textContent = `${data.cards.length} pending`;
+    candidateList.innerHTML = data.cards.map(renderCandidate).join("") ||
+      '<p class="muted">No candidates waiting for review.</p>';
+  } catch (error) {
+    candidateList.innerHTML = `<p class="muted">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+candidateList.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.target.closest(".candidate-item");
+  const cardId = form?.dataset.cardId;
+  if (!cardId) return;
+  const data = new FormData(form);
+  const button = form.querySelector("button[type=submit]");
+  button.disabled = true;
+  try {
+    await requestJson(`/api/study/cards/${cardId}/approve`, {
+      method: "PUT",
+      body: JSON.stringify({ prompt: data.get("prompt"), answer: data.get("answer") }),
+    });
+    await Promise.all([loadCandidates(), loadStudyQueue(), loadStats()]);
+  } catch (error) {
+    button.disabled = false;
+    candidateCount.textContent = error.message;
+  }
+});
+
+candidateList.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-reject-card]");
+  if (!button) return;
+  const form = button.closest(".candidate-item");
+  button.disabled = true;
+  try {
+    await requestJson(`/api/study/cards/${form.dataset.cardId}/reject`, {
+      method: "POST",
+    });
+    await loadCandidates();
+  } catch (error) {
+    button.disabled = false;
+    candidateCount.textContent = error.message;
+  }
+});
 
 async function loadStats() {
   try {
@@ -463,7 +552,7 @@ noteForm.addEventListener("submit", async (event) => {
     noteStatus.textContent = "Saved locally.";
     await loadNotes();
     await loadTags();
-    loadStudyQueue();
+    loadCandidates();
     loadStats();
   } catch (error) {
     noteStatus.textContent = error.message;
@@ -627,6 +716,7 @@ libraryImportForm.addEventListener("submit", async (event) => {
   }
   libraryImportForm.elements.files.value = "";
   await loadDocuments();
+  await loadCandidates();
   if (failures.length) {
     libraryStatus.textContent = `${files.length - failures.length} imported, ${failures.length} failed`;
   }
@@ -873,6 +963,7 @@ document.addEventListener("keydown", (event) => {
 
 loadTags();
 loadStudyQueue();
+loadCandidates();
 loadStats();
 loadModels();
 loadNotionStatus();

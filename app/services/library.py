@@ -19,6 +19,7 @@ from app.services.documents import (
 )
 from app.services.notion import NotionClient, NotionPage
 from app.services.ocr import NullOcrProvider, OcrProvider
+from app.services.study import StudyService
 from app.services.webcapture import Fetcher, Resolver, capture_page
 
 
@@ -319,7 +320,22 @@ class LibraryService:
                 }
                 for chunk in chunks
             ]
+            self.db.delete_document_candidate_cards(document_id)
             self.db.insert_document_chunks(document_id, indexed_chunks)
+            document = self.db.get_source_document(document_id)
+            study = StudyService(self.db)
+            for chunk in self.db.list_document_chunks(document_id):
+                study.create_candidate(
+                    prompt=(
+                        f"Review {document['title']} at "
+                        f"{chunk['location_label'] or 'document'}"
+                    ),
+                    answer=chunk["content"],
+                    source_label=chunk["location_label"] or "document",
+                    course_id=document["course_id"],
+                    source_document_id=document_id,
+                    source_chunk_id=chunk["id"],
+                )
             self.db.update_source_document(
                 document_id, status="ready", error_message="", updated_at=now
             )

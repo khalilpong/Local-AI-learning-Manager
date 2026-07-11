@@ -40,6 +40,7 @@ def test_homepage_renders_app_shell(tmp_path, monkeypatch):
     assert 'id="documentList"' in response.text
     assert 'id="searchCourseSelect"' in response.text
     assert 'id="askCourseSelect"' in response.text
+    assert 'id="candidateList"' in response.text
 
 
 def test_favicon_does_not_log_404(tmp_path, monkeypatch):
@@ -172,19 +173,38 @@ def test_study_stats_and_export_endpoints(tmp_path, monkeypatch):
 
     queue = client.get("/api/study/queue")
     assert queue.status_code == 200
-    assert queue.json()["notes"][0]["id"] == created["id"]
+    assert queue.json()["cards"] == []
 
-    graded = client.post(f"/api/study/{created['id']}/grade", json={"grade": "good"})
+    candidates = client.get("/api/study/candidates")
+    assert candidates.status_code == 200
+    candidate = candidates.json()["cards"][0]
+    assert candidate["note_id"] == created["id"]
+
+    approved = client.put(
+        f"/api/study/cards/{candidate['id']}/approve",
+        json={"prompt": "What builds retention?", "answer": candidate["answer"]},
+    )
+    assert approved.status_code == 200
+    assert approved.json()["prompt"] == "What builds retention?"
+
+    queue = client.get("/api/study/queue")
+    assert queue.json()["cards"][0]["id"] == candidate["id"]
+
+    graded = client.post(
+        f"/api/study/cards/{candidate['id']}/grade", json={"grade": "good"}
+    )
     assert graded.status_code == 200
     assert graded.json()["interval_days"] >= 1.0
 
     empty_queue = client.get("/api/study/queue")
-    assert empty_queue.json()["notes"] == []
+    assert empty_queue.json()["cards"] == []
 
-    bad_grade = client.post(f"/api/study/{created['id']}/grade", json={"grade": "meh"})
+    bad_grade = client.post(
+        f"/api/study/cards/{candidate['id']}/grade", json={"grade": "meh"}
+    )
     assert bad_grade.status_code == 400
 
-    missing = client.post("/api/study/99999/grade", json={"grade": "good"})
+    missing = client.post("/api/study/cards/99999/grade", json={"grade": "good"})
     assert missing.status_code == 404
 
     stats = client.get("/api/stats")
@@ -195,6 +215,26 @@ def test_study_stats_and_export_endpoints(tmp_path, monkeypatch):
     export = client.get("/api/export/markdown")
     assert export.status_code == 200
     assert "## Study target" in export.text
+
+
+def test_candidate_reject_and_active_card_suspend_through_api(tmp_path, monkeypatch):
+    configure_library_test_app(tmp_path, monkeypatch)
+    client = TestClient(create_app())
+    client.post("/api/notes", json={"title": "Reject", "content": "No card."})
+    client.post("/api/notes", json={"title": "Suspend", "content": "Pause card."})
+    candidates = client.get("/api/study/candidates").json()["cards"]
+
+    rejected = client.post(f"/api/study/cards/{candidates[0]['id']}/reject")
+    approved = client.put(
+        f"/api/study/cards/{candidates[1]['id']}/approve", json={}
+    )
+    suspended = client.post(
+        f"/api/study/cards/{candidates[1]['id']}/suspend"
+    )
+
+    assert rejected.json()["state"] == "rejected"
+    assert approved.json()["state"] == "active"
+    assert suspended.json()["state"] == "suspended"
 
 
 def test_question_answer_endpoint_returns_sources(tmp_path, monkeypatch):

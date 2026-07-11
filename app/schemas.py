@@ -32,6 +32,11 @@ class GradeRequest(BaseModel):
     grade: str = Field(min_length=1, max_length=10)
 
 
+class CardApproveRequest(BaseModel):
+    prompt: str | None = Field(default=None, min_length=1, max_length=1000)
+    answer: str | None = Field(default=None, min_length=1, max_length=20000)
+
+
 class SettingsUpdate(BaseModel):
     ollama_model: str = Field(min_length=1, max_length=120)
 

@@ -21,6 +21,7 @@ from fastapi.templating import Jinja2Templates
 from app.db import Database
 from app.schemas import (
     AskRequest,
+    CardApproveRequest,
     CourseCreate,
     CourseUpdate,
     GradeRequest,
@@ -340,17 +341,65 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"ollama_model": model}
 
-    @app.get("/api/study/queue")
-    def study_queue(request: Request, limit: int = 10):
-        limit = min(max(limit, 1), 50)
-        return {"notes": get_service(request).study_queue(limit=limit)}
+    @app.get("/api/study/candidates")
+    def study_candidates(
+        request: Request, limit: int = 100, course_id: int | None = None
+    ):
+        limit = min(max(limit, 1), 200)
+        return {
+            "cards": get_service(request).study.list_candidates(
+                course_id=course_id, limit=limit
+            )
+        }
 
-    @app.post("/api/study/{note_id}/grade")
-    def grade_note(note_id: int, payload: GradeRequest, request: Request):
+    @app.put("/api/study/cards/{card_id}/approve")
+    def approve_study_card(
+        card_id: int, payload: CardApproveRequest, request: Request
+    ):
         try:
-            return get_service(request).grade_note(note_id, payload.grade)
+            return get_service(request).study.approve(
+                card_id, prompt=payload.prompt, answer=payload.answer
+            )
         except KeyError as exc:
-            raise HTTPException(status_code=404, detail="Note not found") from exc
+            raise HTTPException(status_code=404, detail="Study card not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/study/cards/{card_id}/reject")
+    def reject_study_card(card_id: int, request: Request):
+        try:
+            return get_service(request).study.reject(card_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Study card not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/study/cards/{card_id}/suspend")
+    def suspend_study_card(card_id: int, request: Request):
+        try:
+            return get_service(request).study.suspend(card_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Study card not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/study/queue")
+    def study_queue(
+        request: Request, limit: int = 10, course_id: int | None = None
+    ):
+        limit = min(max(limit, 1), 50)
+        return {
+            "cards": get_service(request).study.queue(
+                limit=limit, course_id=course_id
+            )
+        }
+
+    @app.post("/api/study/cards/{card_id}/grade")
+    def grade_note(card_id: int, payload: GradeRequest, request: Request):
+        try:
+            return get_service(request).study.grade(card_id, payload.grade)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Study card not found") from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

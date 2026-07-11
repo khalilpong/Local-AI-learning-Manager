@@ -7,6 +7,7 @@ from typing import Any
 from app.db import Database
 from app.services.embeddings import EmbeddingProvider, cosine_similarity, tokenize
 from app.services.retrieval import UnifiedRetrievalService
+from app.services.study import StudyService
 
 
 class MemoryService:
@@ -15,6 +16,7 @@ class MemoryService:
         self.embedder = embedder
         self.ai_client = ai_client
         self.retrieval = UnifiedRetrievalService(db, embedder)
+        self.study = StudyService(db)
 
     @property
     def embedding_version(self) -> str:
@@ -68,7 +70,7 @@ class MemoryService:
         embedding = self.embedder.embed(
             f"{clean_title}\n{clean_content}\n{summary}\n{' '.join(tags)}"
         )
-        return self.db.insert_note(
+        note = self.db.insert_note(
             title=clean_title,
             content=clean_content,
             source=clean_source,
@@ -81,6 +83,15 @@ class MemoryService:
             updated_at=timestamp,
             course_id=course_id,
         )
+        self.study.create_candidate(
+            prompt=note["title"],
+            answer=note["content"],
+            source_label=note["source"] or "manual note",
+            course_id=note.get("course_id"),
+            note_id=note["id"],
+            source_document_id=note.get("source_document_id"),
+        )
+        return note
 
     def get_note(self, note_id: int) -> dict:
         return self.db.get_note(note_id)
@@ -202,57 +213,10 @@ class MemoryService:
         return self.db.list_weekly_reviews()
 
     def study_queue(self, limit: int = 10) -> list[dict]:
-        now = self._iso(datetime.now(timezone.utc))
-        notes = self.db.list_due_notes(now, limit=limit)
-        return [
-            {key: value for key, value in note.items() if key != "embedding"}
-            for note in notes
-        ]
+        return self.study.queue(limit=limit)
 
     def grade_note(self, note_id: int, grade: str) -> dict:
-        clean_grade = grade.strip().lower()
-        if clean_grade not in {"again", "good", "easy"}:
-            raise ValueError("Grade must be one of: again, good, easy")
-        self.db.get_note(note_id)
-
-        state = self.db.get_review_state(note_id)
-        ease = state["ease"] if state else 2.5
-        interval = state["interval_days"] if state else 0.0
-        reps = state["reps"] if state else 0
-
-        now = datetime.now(timezone.utc)
-        if clean_grade == "again":
-            ease = max(1.3, ease - 0.2)
-            reps = 0
-            interval = 0.0
-            due = now + timedelta(minutes=10)
-        elif clean_grade == "good":
-            interval = 1.0 if reps == 0 else max(1.0, interval * ease)
-            reps += 1
-            due = now + timedelta(days=interval)
-        else:
-            ease = ease + 0.15
-            interval = 3.0 if reps == 0 else max(3.0, interval * ease * 1.3)
-            reps += 1
-            due = now + timedelta(days=interval)
-
-        saved = self.db.upsert_review_state(
-            note_id=note_id,
-            due_at=self._iso(due),
-            interval_days=round(interval, 2),
-            ease=round(ease, 2),
-            reps=reps,
-            last_grade=clean_grade,
-            updated_at=self._iso(now),
-        )
-        return {
-            "note_id": note_id,
-            "grade": clean_grade,
-            "due_at": saved["due_at"],
-            "interval_days": saved["interval_days"],
-            "ease": saved["ease"],
-            "reps": saved["reps"],
-        }
+        return self.study.grade(note_id, grade)
 
     def stats(self) -> dict:
         now = datetime.now(timezone.utc)
@@ -280,8 +244,8 @@ class MemoryService:
             "total_notes": sum(counts.values()),
             "notes_this_week": notes_this_week,
             "streak_days": streak,
-            "due_now": self.db.count_due_notes(self._iso(now)),
-            "reviewed_today": self.db.count_reviews_on(today.isoformat()),
+            "due_now": self.db.count_due_study_cards(self._iso(now)),
+            "reviewed_today": self.db.count_study_reviews_on(today.isoformat()),
             "daily_activity": activity,
             "top_tags": self.db.list_tags()[:8],
         }

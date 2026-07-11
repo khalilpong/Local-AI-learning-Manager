@@ -126,9 +126,43 @@ class Database:
 
                 CREATE INDEX IF NOT EXISTS idx_document_chunks_source
                 ON document_chunks(source_document_id);
+
+                CREATE TABLE IF NOT EXISTS study_cards (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    course_id INTEGER,
+                    note_id INTEGER UNIQUE,
+                    source_document_id INTEGER,
+                    source_chunk_id INTEGER,
+                    prompt TEXT NOT NULL,
+                    answer TEXT NOT NULL,
+                    source_label TEXT NOT NULL DEFAULT '',
+                    state TEXT NOT NULL DEFAULT 'candidate'
+                        CHECK (state IN ('candidate', 'active', 'suspended', 'rejected')),
+                    due_at TEXT NOT NULL,
+                    interval_days REAL NOT NULL DEFAULT 0,
+                    ease REAL NOT NULL DEFAULT 2.5,
+                    reps INTEGER NOT NULL DEFAULT 0,
+                    last_grade TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+                    FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE,
+                    FOREIGN KEY (source_document_id)
+                        REFERENCES source_documents(id) ON DELETE CASCADE,
+                    FOREIGN KEY (source_chunk_id)
+                        REFERENCES document_chunks(id) ON DELETE SET NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_study_cards_state_due
+                ON study_cards(state, due_at);
+
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_study_cards_source_chunk
+                ON study_cards(source_chunk_id)
+                WHERE source_chunk_id IS NOT NULL;
                 """
             )
             self._migrate(conn)
+            self._migrate_study_cards(conn)
             self._init_fts(conn)
 
     def _migrate(self, conn: sqlite3.Connection) -> None:
@@ -177,6 +211,33 @@ class Database:
             # Some Python builds omit FTS5. Semantic search and token scoring
             # still work, so the app should remain usable.
             pass
+
+    def _migrate_study_cards(self, conn: sqlite3.Connection) -> None:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO study_cards (
+                course_id, note_id, source_document_id, source_chunk_id,
+                prompt, answer, source_label, state, due_at,
+                interval_days, ease, reps, last_grade, created_at, updated_at
+            )
+            SELECT
+                notes.course_id, notes.id, notes.source_document_id, NULL,
+                notes.title, notes.content,
+                CASE WHEN notes.source != '' THEN notes.source ELSE 'manual note' END,
+                'active', COALESCE(review_states.due_at, notes.created_at),
+                COALESCE(review_states.interval_days, 0),
+                COALESCE(review_states.ease, 2.5),
+                COALESCE(review_states.reps, 0),
+                COALESCE(review_states.last_grade, ''),
+                notes.created_at,
+                COALESCE(review_states.updated_at, notes.updated_at)
+            FROM notes
+            LEFT JOIN review_states ON review_states.note_id = notes.id
+            WHERE NOT EXISTS (
+                SELECT 1 FROM study_cards WHERE study_cards.note_id = notes.id
+            )
+            """
+        )
 
     def insert_note(
         self,
@@ -680,6 +741,169 @@ class Database:
             chunk["embedding"] = json.loads(chunk.pop("embedding_json"))
             chunks.append(chunk)
         return chunks
+
+    def insert_study_card(
+        self,
+        *,
+        prompt: str,
+        answer: str,
+        source_label: str,
+        state: str = "candidate",
+        course_id: int | None = None,
+        note_id: int | None = None,
+        source_document_id: int | None = None,
+        source_chunk_id: int | None = None,
+        due_at: str | None = None,
+    ) -> dict:
+        now = datetime.now(timezone.utc).isoformat()
+        with self.connect() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO study_cards (
+                    course_id, note_id, source_document_id, source_chunk_id,
+                    prompt, answer, source_label, state, due_at,
+                    interval_days, ease, reps, last_grade, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 2.5, 0, '', ?, ?)
+                """,
+                (
+                    course_id,
+                    note_id,
+                    source_document_id,
+                    source_chunk_id,
+                    prompt,
+                    answer,
+                    source_label,
+                    state,
+                    due_at or now,
+                    now,
+                    now,
+                ),
+            )
+            card_id = int(cur.lastrowid)
+        return self.get_study_card(card_id)
+
+    def get_study_card(self, card_id: int) -> dict:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT study_cards.*, courses.name AS course_name,
+                       source_documents.title AS source_title
+                FROM study_cards
+                LEFT JOIN courses ON courses.id = study_cards.course_id
+                LEFT JOIN source_documents
+                  ON source_documents.id = study_cards.source_document_id
+                WHERE study_cards.id = ?
+                """,
+                (card_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"Study card {card_id} not found")
+            return dict(row)
+
+    def list_study_cards(
+        self,
+        *,
+        state: str | None = None,
+        course_id: int | None = None,
+        limit: int = 100,
+    ) -> list[dict]:
+        conditions = []
+        parameters: list[object] = []
+        if state is not None:
+            conditions.append("state = ?")
+            parameters.append(state)
+        if course_id is not None:
+            conditions.append("course_id = ?")
+            parameters.append(course_id)
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT id FROM study_cards
+                {where}
+                ORDER BY datetime(created_at) DESC, id DESC
+                LIMIT ?
+                """,
+                (*parameters, limit),
+            ).fetchall()
+        return [self.get_study_card(int(row["id"])) for row in rows]
+
+    def update_study_card(self, card_id: int, **fields: object) -> dict:
+        allowed = {
+            "prompt",
+            "answer",
+            "source_label",
+            "state",
+            "due_at",
+            "interval_days",
+            "ease",
+            "reps",
+            "last_grade",
+            "updated_at",
+        }
+        updates = {key: value for key, value in fields.items() if key in allowed}
+        if not updates:
+            return self.get_study_card(card_id)
+        self.get_study_card(card_id)
+        assignments = ", ".join(f"{key} = ?" for key in updates)
+        with self.connect() as conn:
+            conn.execute(
+                f"UPDATE study_cards SET {assignments} WHERE id = ?",
+                (*updates.values(), card_id),
+            )
+        return self.get_study_card(card_id)
+
+    def list_due_study_cards(
+        self, now_iso: str, limit: int = 20, course_id: int | None = None
+    ) -> list[dict]:
+        conditions = ["state = 'active'", "due_at <= ?"]
+        parameters: list[object] = [now_iso]
+        if course_id is not None:
+            conditions.append("course_id = ?")
+            parameters.append(course_id)
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT id FROM study_cards
+                WHERE {' AND '.join(conditions)}
+                ORDER BY datetime(due_at), id
+                LIMIT ?
+                """,
+                (*parameters, limit),
+            ).fetchall()
+        return [self.get_study_card(int(row["id"])) for row in rows]
+
+    def delete_document_candidate_cards(self, document_id: int) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                DELETE FROM study_cards
+                WHERE source_document_id = ? AND state = 'candidate'
+                """,
+                (document_id,),
+            )
+
+    def count_due_study_cards(self, now_iso: str) -> int:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS count FROM study_cards
+                WHERE state = 'active' AND due_at <= ?
+                """,
+                (now_iso,),
+            ).fetchone()
+            return int(row["count"])
+
+    def count_study_reviews_on(self, day: str) -> int:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS count FROM study_cards
+                WHERE substr(updated_at, 1, 10) = ? AND last_grade != ''
+                """,
+                (day,),
+            ).fetchone()
+            return int(row["count"])
 
     def get_setting(self, key: str) -> str | None:
         with self.connect() as conn:

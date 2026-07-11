@@ -233,20 +233,25 @@ class MemoryServiceTest(unittest.TestCase):
                 content="Spaced repetition strengthens long-term memory.",
             )
 
-            queue = service.study_queue()
-            self.assertEqual([item["id"] for item in queue], [note["id"]])
+            self.assertEqual(service.study_queue(), [])
+            candidates = service.study.list_candidates()
+            self.assertEqual([item["note_id"] for item in candidates], [note["id"]])
 
-            result = service.grade_note(note["id"], "good")
+            card = service.study.approve(candidates[0]["id"])
+            queue = service.study_queue()
+            self.assertEqual([item["id"] for item in queue], [card["id"]])
+
+            result = service.grade_note(card["id"], "good")
             self.assertGreaterEqual(result["interval_days"], 1.0)
             self.assertEqual(result["reps"], 1)
             self.assertEqual(service.study_queue(), [])
 
-            again = service.grade_note(note["id"], "again")
+            again = service.grade_note(card["id"], "again")
             self.assertEqual(again["reps"], 0)
             self.assertLess(again["ease"], 2.5)
 
             with self.assertRaises(ValueError):
-                service.grade_note(note["id"], "meh")
+                service.grade_note(card["id"], "meh")
             with self.assertRaises(KeyError):
                 service.grade_note(99999, "good")
 
@@ -255,12 +260,18 @@ class MemoryServiceTest(unittest.TestCase):
             service = make_service(Path(tmp))
             first = service.create_note(title="Note A", content="Alpha content.")
             service.create_note(title="Note B", content="Beta content.")
-            service.grade_note(first["id"], "good")
+            card = next(
+                item
+                for item in service.study.list_candidates()
+                if item["note_id"] == first["id"]
+            )
+            service.study.approve(card["id"])
+            service.grade_note(card["id"], "good")
 
             stats = service.stats()
 
             self.assertEqual(stats["total_notes"], 2)
-            self.assertEqual(stats["due_now"], 1)
+            self.assertEqual(stats["due_now"], 0)
             self.assertEqual(stats["reviewed_today"], 1)
             self.assertGreaterEqual(stats["streak_days"], 1)
             self.assertEqual(len(stats["daily_activity"]), 14)

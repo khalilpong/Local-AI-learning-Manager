@@ -111,6 +111,26 @@ def test_import_markdown_copies_file_and_embeds_cited_chunks(tmp_path):
     assert (tmp_path / "library" / imported["stored_filename"]).is_file()
     assert imported["chunks"][0]["location_label"] == "Entropy"
     assert imported["chunks"][0]["embedding"] is not None
+    candidates = service.db.list_study_cards(state="candidate")
+    assert candidates[0]["source_document_id"] == imported["id"]
+    assert candidates[0]["source_label"] == "Entropy"
+
+
+def test_retrying_document_does_not_duplicate_card_candidates(tmp_path):
+    service = make_library_service(tmp_path)
+    course = service.create_course(name="Information Theory")
+    imported = service.import_file(
+        course["id"],
+        "lecture.md",
+        "text/markdown",
+        io.BytesIO(b"# Entropy\nUncertainty is measurable."),
+    )
+
+    service.retry_document(imported["id"])
+
+    candidates = service.db.list_study_cards(state="candidate")
+    assert len(candidates) == 1
+    assert candidates[0]["source_label"] == "Entropy"
 
 
 def test_duplicate_import_returns_existing_document(tmp_path):
