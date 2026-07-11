@@ -205,6 +205,6 @@ git diff --check
 
 At desktop `1280x800` and mobile `390x900`, verify: create note -> candidate only -> edit/approve -> active queue -> reveal/grade; export Study Pack; import structured result; no console errors or horizontal overflow.
 
-- [ ] **Step 4: Commit and push**
+- [x] **Step 4: Commit and push**
 
 Commit verified docs, then push `codex/stage-5c-study-bridge` to `origin` (`https://github.com/khalilpong/Local-AI-learning-Manager.git`). Do not merge to `main` without review.
