@@ -291,6 +291,9 @@ UI 已做响应式布局，支持桌面和移动端宽度。
 - `PUT /api/study/cards/{card_id}/approve` / `POST .../reject`（审批或拒绝候选卡）
 - `GET /api/study/queue` / `POST /api/study/cards/{card_id}/grade`（独立卡片队列与评分）
 - `GET /api/study-pack` / `POST /api/study-pack/import`（课程 Study Pack 导出和审核结果导入）
+- `GET /api/backup` / `POST /api/backup/restore`（本地备份下载与恢复）
+- `GET /api/diagnostics`（隐私安全运行诊断）
+- `GET /api/courses/{course_id}/dashboard`（课程学习仪表盘指标）
 - `GET /api/stats`（学习统计：总数、本周、streak、待复习、今日已复习、14 天活动）
 - `GET /api/export/markdown`（导出全部笔记为 Markdown 文件）
 - `GET /api/reviews/weekly`
@@ -369,6 +372,11 @@ UI 已做响应式布局，支持桌面和移动端宽度。
 | 截图 OCR（macOS Vision，可插拔）（5B） | 已完成 |
 | 网页正文采集 + SSRF 防护（5B） | 已完成 |
 | Notion 只读同步（幂等 + 归档）（5B） | 已完成 |
+| 可控复习卡 + ChatGPT Study Pack（5C） | 已完成 |
+| 版本化事务迁移（5D） | 已完成 |
+| 本地备份与恢复（5D） | 已完成 |
+| 隐私安全诊断（5D） | 已完成 |
+| 课程学习仪表盘（5D） | 已完成 |
 | 自动总结 | 已完成基础版 |
 | 自动标签 | 已完成基础版 |
 | 本地 embedding | 已完成 |
@@ -377,7 +385,7 @@ UI 已做响应式布局，支持桌面和移动端宽度。
 | Weekly Review | 已完成 |
 | Web UI | 已完成 MVP |
 | 响应式布局 | 已完成基础版 |
-| 单元测试/API 测试 | 已完成（84 项） |
+| 单元测试/API 测试 | 已完成（99 项） |
 | README | 已完成 |
 | 后续桌面端架构预留 | 已完成 |
 | GitHub 仓库 | 已建立：`khalilpong/Local-AI-learning-Manager` |
@@ -394,7 +402,7 @@ python3 -m pytest -q
 结果：
 
 ```text
-84 passed
+99 passed
 ```
 
 已验证内容：
@@ -630,14 +638,16 @@ pip install sentence-transformers
 - [x] 导出带课程资料、来源位置、现有卡和可复用课程指令的 `study-pack.md`。
 - [x] 导入经用户审核的结构化 ChatGPT Markdown；笔记和候选卡保持本地且不会自动激活。
 
-#### 5D：可靠性和学习仪表盘
+#### 5D：可靠性和学习仪表盘（已完成）
 
-- [ ] 增加课程学习仪表盘、弱项和预计复习负担。
-- [ ] 增加本地备份与恢复。
-- [ ] 增加数据库 schema 版本和事务迁移。
-- [ ] 增加解析器、OCR、Notion 和存储诊断。
+- [x] 版本化事务迁移：新增 `schema_migrations` 表和 `Database.schema_version()`，每个编号迁移在 SQLite savepoint 内执行、成功后才记录，失败整体回滚；重复 init 幂等。
+- [x] 本地备份与恢复：`BackupService` 用 SQLite 在线备份 API 打包 manifest + 数据库 + 受管理文件库为校验过的 ZIP；恢复前拒绝非 ZIP、坏 manifest、绝对路径和 `../` 穿越，暂存目录做完整性校验后原子替换、失败回滚。`GET /api/backup` 下载、`POST /api/backup/restore`（2 GB 上限），前端「Local data」面板含下载和二次确认的恢复。
+- [x] 隐私安全诊断：`GET /api/diagnostics` 报告数据库可写性/schema 版本/大小、存储可写性/剩余空间、解析器可用性、OCR/embedding/Ollama/Notion 状态，全部为能力布尔值，绝不含令牌、环境值或路径；前端诊断列表带 Ready / Action needed / Unavailable 徽章。
+- [x] 课程学习仪表盘：`GET /api/courses/{id}/dashboard` 汇总笔记数、文档总数与未解决导入、候选/active/暂停/到期卡数、弱项卡（低熟练度或上次 `again`）和未来 7 天复习负担（逾期卡并入今日）；前端提供课程选择器、指标块、弱项列表和每日负担柱状图。
 
-当前进度边界：5A、5B、5C 均已实现。5C 通过 `84 passed` 自动化测试，覆盖旧历史迁移、候选状态转换、文档候选幂等、卡片调度、Study Pack 引用、严格 Markdown 导入和隐私字段排除。浏览器实测完成“创建课程/笔记 → 只产生候选 → 编辑批准 → active queue 展开评分 → Study Pack 下载”；桌面 `1280x800` 与手机 `390x900` 均无横向溢出且控制台无 warning/error。浏览器控制接口不支持设置本地文件输入，真实 `.md` 上传由 FastAPI multipart 集成测试覆盖。下一步进入 5D（课程仪表盘、备份恢复、schema 版本和诊断）。
+验证：`99 passed` 自动化测试（新增 backup/diagnostics/dashboard 及迁移覆盖）；`compileall`、`node --check`、`git diff --check` 全通过；备份往返实测（创建 → 拒绝损坏档 → 恢复，笔记与文档数不变）；浏览器实机验证诊断列表、仪表盘空态与含数据态（1 候选/3 active/2 到期、弱项卡、负担柱状图）、桌面与移动端无横向溢出、控制台无错误。
+
+至此 Stage 5（完整学习工作流升级）5A–5D 全部完成。
 
 ## 12. 简历描述建议
 
@@ -666,4 +676,4 @@ Built a local-first AI personal memory app with FastAPI, SQLite, semantic search
 - 数据保存在本地
 - 具备后续桌面端封装基础
 
-下一步进入阶段 5D：完成课程学习仪表盘、本地备份恢复、schema 版本迁移和运行诊断；VPS 相关功能继续暂缓。
+Stage 5（完整学习工作流升级）5A–5D 已全部完成：课程资料库与多格式导入、统一引用检索、截图 OCR、网页采集、Notion 只读同步、可控复习卡与 ChatGPT Study Pack、版本化迁移、本地备份恢复、诊断与课程仪表盘，全部本地运行。VPS/远程同步/公开部署仍按设计暂缓。后续可选：Tauri 打包 .app、接入 sentence-transformers、GitHub Actions CI。
