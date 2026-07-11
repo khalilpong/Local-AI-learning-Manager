@@ -750,6 +750,71 @@ a.ghost-button {
   background: #833027;
 }
 
+.diagnostics-block {
+  border-top: 1px solid var(--border);
+  margin-top: 16px;
+  padding-top: 12px;
+}
+
+.diagnostics-block .section-heading {
+  margin-bottom: 8px;
+}
+
+.diagnostics-block h3 {
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.diagnostics-list {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.diagnostic-row {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(120px, 0.4fr) minmax(0, 1fr) auto;
+}
+
+.diagnostic-label {
+  font-weight: 700;
+}
+
+.diagnostic-detail {
+  color: var(--muted);
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diagnostic-state {
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+.diagnostic-ready {
+  background: #dff3e6;
+  color: #1c7a44;
+}
+
+.diagnostic-off {
+  background: #f0e6e4;
+  color: #a43d31;
+}
+
+.diagnostic-action {
+  background: #fbeecd;
+  color: #8a6414;
+}
+
 .candidate-list {
   display: grid;
   gap: 10px;
@@ -1040,6 +1105,15 @@ a.ghost-button {
   .local-data-controls,
   .backup-restore-form {
     grid-template-columns: 1fr;
+  }
+
+  .diagnostic-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .diagnostic-detail {
+    grid-column: 1 / -1;
+    white-space: normal;
   }
 
   .document-list {

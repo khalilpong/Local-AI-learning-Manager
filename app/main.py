@@ -35,6 +35,7 @@ from app.schemas import (
 )
 from app.services.embeddings import create_embedding_provider
 from app.services.backup import BackupError, BackupService
+from app.services.diagnostics import DiagnosticsService
 from app.services.documents import UnsupportedDocumentError
 from app.services.library import LibraryService, UploadTooLargeError
 from app.services.notion import HttpNotionClient, NotionNotConfiguredError
@@ -244,6 +245,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except (RuntimeError, OSError) as exc:
             raise HTTPException(status_code=502, detail=f"Notion sync failed: {exc}") from exc
+
+    @app.get("/api/diagnostics")
+    def diagnostics(request: Request):
+        memory = get_service(request)
+        library = get_library_service(request)
+        return DiagnosticsService(
+            db=memory.db,
+            library_dir=request.app.state.settings.library_dir,
+            embedder=memory.embedder,
+            ai_client=memory.ai_client,
+            ocr_provider=library.ocr_provider,
+        ).report()
 
     @app.get("/api/library/documents/{document_id}")
     def get_library_document(document_id: int, request: Request):

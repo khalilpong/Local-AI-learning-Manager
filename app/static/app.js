@@ -40,6 +40,8 @@ const studyResultImportForm = document.querySelector("#studyResultImportForm");
 const studyBridgeStatus = document.querySelector("#studyBridgeStatus");
 const backupRestoreForm = document.querySelector("#backupRestoreForm");
 const backupStatus = document.querySelector("#backupStatus");
+const diagnosticsList = document.querySelector("#diagnosticsList");
+const diagnosticsRefresh = document.querySelector("#diagnosticsRefresh");
 
 let activeTag = null;
 let lastQuery = "";
@@ -567,6 +569,49 @@ backupRestoreForm.addEventListener("submit", async (event) => {
   }
 });
 
+function diagnosticRow(label, ok, detail, actionable = false) {
+  const state = ok ? "ready" : actionable ? "action" : "off";
+  const text = ok ? "Ready" : actionable ? "Action needed" : "Unavailable";
+  return `
+    <li class="diagnostic-row">
+      <span class="diagnostic-label">${escapeHtml(label)}</span>
+      <span class="diagnostic-detail">${escapeHtml(detail || "")}</span>
+      <span class="diagnostic-state diagnostic-${state}">${text}</span>
+    </li>
+  `;
+}
+
+function formatBytes(bytes) {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+  return `${(bytes / 1024 ** index).toFixed(1)} ${units[index]}`;
+}
+
+async function loadDiagnostics() {
+  diagnosticsList.innerHTML = "<li class='muted'>Loading diagnostics...</li>";
+  try {
+    const d = await requestJson("/api/diagnostics");
+    const parsersOk = Object.values(d.parsers).every(Boolean);
+    const missingParsers = Object.entries(d.parsers)
+      .filter(([, ok]) => !ok)
+      .map(([name]) => name);
+    diagnosticsList.innerHTML = [
+      diagnosticRow("Database", d.database.writable, `schema v${d.database.schema_version} · ${formatBytes(d.database.size_bytes)}`),
+      diagnosticRow("Storage", d.storage.writable, `${formatBytes(d.storage.free_bytes)} free`),
+      diagnosticRow("Document parsers", parsersOk, parsersOk ? "PDF · DOCX · PPTX" : `missing: ${missingParsers.join(", ")}`, true),
+      diagnosticRow("OCR", d.ocr.available, d.ocr.provider, true),
+      diagnosticRow("Embeddings", true, d.embedding.version),
+      diagnosticRow("Ollama", d.ollama.available, d.ollama.available ? "reachable" : "offline fallback", true),
+      diagnosticRow("Notion", d.notion.configured, d.notion.configured ? "token set" : "not configured", true),
+    ].join("");
+  } catch (error) {
+    diagnosticsList.innerHTML = `<li class='muted'>${escapeHtml(error.message)}</li>`;
+  }
+}
+
+diagnosticsRefresh.addEventListener("click", loadDiagnostics);
+
 async function loadStats() {
   try {
     const data = await requestJson("/api/stats");
@@ -1034,6 +1079,7 @@ loadCandidates();
 loadStats();
 loadModels();
 loadNotionStatus();
+loadDiagnostics();
 loadCourses().catch((error) => {
   libraryStatus.textContent = error.message;
 });

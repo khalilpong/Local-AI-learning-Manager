@@ -339,6 +339,24 @@ def test_backup_restore_api_rejects_invalid_zip(tmp_path, monkeypatch):
     assert response.status_code == 400
 
 
+def test_diagnostics_endpoint_reports_capabilities_without_secrets(tmp_path, monkeypatch):
+    monkeypatch.setenv("NOTION_TOKEN", "super-secret-token")
+    configure_library_test_app(tmp_path, monkeypatch)
+    client = TestClient(create_app())
+
+    response = client.get("/api/diagnostics")
+
+    assert response.status_code == 200
+    report = response.json()
+    assert report["database"]["writable"] is True
+    assert report["database"]["schema_version"] >= 1
+    assert set(report["parsers"]) == {"pdf", "docx", "pptx"}
+    assert report["notion"]["configured"] is True
+    assert "ocr" in report and "embedding" in report and "ollama" in report
+    # The token value must never appear anywhere in the diagnostics payload.
+    assert "super-secret-token" not in response.text
+
+
 def test_question_answer_endpoint_returns_sources(tmp_path, monkeypatch):
     monkeypatch.setenv("MEMORY_DB_PATH", str(tmp_path / "api.db"))
     monkeypatch.setenv("MEMORY_AI_MODE", "offline")
