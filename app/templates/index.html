@@ -19,6 +19,7 @@
         <nav class="nav-list" aria-label="Main navigation">
           <a href="#compose" class="active">Create</a>
           <a href="#library">Library</a>
+          <a href="#dashboard">Dashboard</a>
           <a href="#search">Search</a>
           <a href="#study">Study</a>
           <a href="#stats">Stats</a>
@@ -90,6 +91,18 @@
           </div>
           <div id="documentList" class="document-list">
             <p class="muted">Select a course to view local files.</p>
+          </div>
+        </section>
+
+        <section class="panel dashboard-panel" id="dashboard">
+          <div class="section-heading">
+            <h2>Course dashboard</h2>
+            <select id="dashboardCourseSelect" aria-label="Dashboard course">
+              <option value="">Select a course</option>
+            </select>
+          </div>
+          <div id="dashboardBody">
+            <p class="muted">Select a course to see its learning dashboard.</p>
           </div>
         </section>
 

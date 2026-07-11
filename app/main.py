@@ -35,6 +35,7 @@ from app.schemas import (
 )
 from app.services.embeddings import create_embedding_provider
 from app.services.backup import BackupError, BackupService
+from app.services.dashboard import DashboardService
 from app.services.diagnostics import DiagnosticsService
 from app.services.documents import UnsupportedDocumentError
 from app.services.library import LibraryService, UploadTooLargeError
@@ -169,6 +170,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 term=payload.term,
                 status=payload.status,
             )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Course not found") from exc
+
+    @app.get("/api/courses/{course_id}/dashboard")
+    def course_dashboard(course_id: int, request: Request):
+        try:
+            return DashboardService(get_service(request).db).course_dashboard(course_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Course not found") from exc
 

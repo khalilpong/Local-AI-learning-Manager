@@ -961,6 +961,83 @@ class Database:
             ).fetchone()
             return int(row["count"])
 
+    def course_document_status_counts(self, course_id: int) -> dict[str, int]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT status, COUNT(*) AS count FROM source_documents
+                WHERE course_id = ? AND archived_at = ''
+                GROUP BY status
+                """,
+                (course_id,),
+            ).fetchall()
+        return {row["status"]: int(row["count"]) for row in rows}
+
+    def count_notes_for_course(self, course_id: int) -> int:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS count FROM notes WHERE course_id = ?",
+                (course_id,),
+            ).fetchone()
+            return int(row["count"])
+
+    def study_card_state_counts(self, course_id: int) -> dict[str, int]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT state, COUNT(*) AS count FROM study_cards
+                WHERE course_id = ?
+                GROUP BY state
+                """,
+                (course_id,),
+            ).fetchall()
+        return {row["state"]: int(row["count"]) for row in rows}
+
+    def list_weak_study_cards(
+        self, course_id: int, *, ease_threshold: float = 2.0, limit: int = 5
+    ) -> list[dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id FROM study_cards
+                WHERE course_id = ? AND state = 'active'
+                  AND (ease < ? OR last_grade = 'again')
+                ORDER BY ease ASC, reps ASC, id ASC
+                LIMIT ?
+                """,
+                (course_id, ease_threshold, limit),
+            ).fetchall()
+        return [self.get_study_card(int(row["id"])) for row in rows]
+
+    def count_active_cards_due_before(self, course_id: int, day: str) -> int:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS count FROM study_cards
+                WHERE course_id = ? AND state = 'active'
+                  AND substr(due_at, 1, 10) < ?
+                """,
+                (course_id, day),
+            ).fetchone()
+            return int(row["count"])
+
+    def study_review_load(self, course_id: int, days: list[str]) -> dict[str, int]:
+        if not days:
+            return {}
+        placeholders = ", ".join("?" for _ in days)
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT substr(due_at, 1, 10) AS day, COUNT(*) AS count
+                FROM study_cards
+                WHERE course_id = ? AND state = 'active'
+                  AND substr(due_at, 1, 10) IN ({placeholders})
+                GROUP BY day
+                """,
+                (course_id, *days),
+            ).fetchall()
+        return {row["day"]: int(row["count"]) for row in rows}
+
     def get_setting(self, key: str) -> str | None:
         with self.connect() as conn:
             row = conn.execute(

@@ -42,6 +42,8 @@ const backupRestoreForm = document.querySelector("#backupRestoreForm");
 const backupStatus = document.querySelector("#backupStatus");
 const diagnosticsList = document.querySelector("#diagnosticsList");
 const diagnosticsRefresh = document.querySelector("#diagnosticsRefresh");
+const dashboardCourseSelect = document.querySelector("#dashboardCourseSelect");
+const dashboardBody = document.querySelector("#dashboardBody");
 
 let activeTag = null;
 let lastQuery = "";
@@ -240,6 +242,11 @@ async function loadCourses(preferredCourseId = null) {
   studyPackCourseSelect.innerHTML = courseOptions(courses, "Select course");
   studyPackDownload.disabled = !courses.length;
   studyResultImportForm.querySelector("button[type=submit]").disabled = !courses.length;
+  const previousDashboard = dashboardCourseSelect.value;
+  dashboardCourseSelect.innerHTML = courses.length
+    ? courseOptions(courses, "Select a course")
+    : '<option value="">Create a course first</option>';
+  dashboardCourseSelect.disabled = !courses.length;
 
   if (courses.length) {
     const available = new Set(courses.map((course) => String(course.id)));
@@ -254,6 +261,10 @@ async function loadCourses(preferredCourseId = null) {
     studyPackCourseSelect.value = available.has(previousStudyPack)
       ? previousStudyPack
       : String(courses[0].id);
+    dashboardCourseSelect.value = available.has(previousDashboard)
+      ? previousDashboard
+      : String(courses[0].id);
+    loadDashboard(dashboardCourseSelect.value);
   }
   await loadDocuments();
 }
@@ -611,6 +622,66 @@ async function loadDiagnostics() {
 }
 
 diagnosticsRefresh.addEventListener("click", loadDiagnostics);
+
+function metricTile(value, label, tone = "") {
+  return `<div class="metric-tile${tone ? ` metric-${tone}` : ""}"><strong>${value}</strong><span>${escapeHtml(label)}</span></div>`;
+}
+
+async function loadDashboard(courseId) {
+  if (!courseId) {
+    dashboardBody.innerHTML = '<p class="muted">Select a course to see its learning dashboard.</p>';
+    return;
+  }
+  dashboardBody.innerHTML = '<p class="muted">Loading dashboard...</p>';
+  try {
+    const d = await requestJson(`/api/courses/${courseId}/dashboard`);
+    const maxLoad = Math.max(1, ...d.review_load.map((day) => day.count));
+    const bars = d.review_load
+      .map(
+        (day) =>
+          `<div class="bar" style="height:${Math.max(4, Math.round((day.count / maxLoad) * 100))}%" title="${day.date}: ${day.count} due">
+             <span class="bar-count">${day.count}</span>
+             <span class="bar-day">${day.date.slice(5)}</span>
+           </div>`
+      )
+      .join("");
+    const weak = d.weak_cards.length
+      ? d.weak_cards
+          .map(
+            (card) =>
+              `<li><span>${escapeHtml(card.prompt)}</span><span class="weak-ease">ease ${card.ease}</span></li>`
+          )
+          .join("")
+      : '<li class="muted">No weak cards yet.</li>';
+    const unresolvedTone = d.documents.unresolved > 0 ? "warn" : "";
+    dashboardBody.innerHTML = `
+      <div class="metric-grid">
+        ${metricTile(d.notes, "Notes")}
+        ${metricTile(d.documents.total, "Documents")}
+        ${metricTile(d.documents.unresolved, "Unresolved imports", unresolvedTone)}
+        ${metricTile(d.cards.candidate, "Candidate cards")}
+        ${metricTile(d.cards.active, "Active cards")}
+        ${metricTile(d.cards.due, "Due now", d.cards.due > 0 ? "accent" : "")}
+      </div>
+      <div class="dashboard-columns">
+        <div>
+          <h3 class="dashboard-subhead">Weak topics</h3>
+          <ul class="weak-list">${weak}</ul>
+        </div>
+        <div>
+          <h3 class="dashboard-subhead">Review load (next 7 days)</h3>
+          <div class="load-chart">${bars}</div>
+        </div>
+      </div>
+    `;
+  } catch (error) {
+    dashboardBody.innerHTML = `<p class="muted">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+dashboardCourseSelect.addEventListener("change", () => {
+  loadDashboard(dashboardCourseSelect.value);
+});
 
 async function loadStats() {
   try {

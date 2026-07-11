@@ -339,6 +339,27 @@ def test_backup_restore_api_rejects_invalid_zip(tmp_path, monkeypatch):
     assert response.status_code == 400
 
 
+def test_course_dashboard_endpoint(tmp_path, monkeypatch):
+    configure_library_test_app(tmp_path, monkeypatch)
+    client = TestClient(create_app())
+    course = client.post("/api/courses", json={"name": "Networks", "code": "CN"}).json()
+    client.post(
+        "/api/notes",
+        json={"title": "TCP", "content": "Reliable ordered byte stream.", "course_id": course["id"]},
+    )
+
+    response = client.get(f"/api/courses/{course['id']}/dashboard")
+
+    assert response.status_code == 200
+    report = response.json()
+    assert report["course"]["code"] == "CN"
+    assert report["notes"] == 1
+    assert len(report["review_load"]) == 7
+    assert set(report["cards"]) == {"candidate", "active", "suspended", "due"}
+
+    assert client.get("/api/courses/999/dashboard").status_code == 404
+
+
 def test_diagnostics_endpoint_reports_capabilities_without_secrets(tmp_path, monkeypatch):
     monkeypatch.setenv("NOTION_TOKEN", "super-secret-token")
     configure_library_test_app(tmp_path, monkeypatch)
