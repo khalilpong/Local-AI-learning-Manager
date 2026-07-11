@@ -230,8 +230,11 @@ UI 已做响应式布局，支持桌面和移动端宽度。
 │   │   ├── embeddings.py
 │   │   ├── library.py
 │   │   ├── memory.py
+│   │   ├── notion.py
+│   │   ├── ocr.py
 │   │   ├── ollama.py
-│   │   └── retrieval.py
+│   │   ├── retrieval.py
+│   │   └── webcapture.py
 │   ├── static
 │   │   ├── app.js
 │   │   └── styles.css
@@ -241,7 +244,10 @@ UI 已做响应式布局，支持桌面和移动端宽度。
 │   ├── test_api.py
 │   ├── test_document_parsers.py
 │   ├── test_library_service.py
-│   └── test_memory_service.py
+│   ├── test_memory_service.py
+│   ├── test_notion_sync.py
+│   ├── test_ocr_import.py
+│   └── test_webcapture.py
 └── docs
     ├── screenshots
     │   ├── dashboard-desktop.png
@@ -276,6 +282,11 @@ UI 已做响应式布局，支持桌面和移动端宽度。
 - `POST /api/ask`
 - `GET /api/models`（列出本机 Ollama 已安装模型及当前选用模型）
 - `PUT /api/settings`（切换 Ollama 模型，持久化到 SQLite）
+- `GET /api/courses` / `POST /api/courses` / `PUT /api/courses/{id}`（课程管理）
+- `GET /api/library/documents` / `POST /api/library/import`（资料列表与多格式导入）
+- `GET /api/library/documents/{id}` / `POST /api/library/documents/{id}/retry`（详情与失败重试）
+- `POST /api/library/capture`（网页正文采集，带 SSRF 防护）
+- `GET /api/notion/status` / `POST /api/notion/sync`（Notion 只读同步状态与触发）
 - `GET /api/study/queue`（获取当前到期的复习队列）
 - `POST /api/study/{note_id}/grade`（提交复习评分 again/good/easy）
 - `GET /api/stats`（学习统计：总数、本周、streak、待复习、今日已复习、14 天活动）
@@ -351,6 +362,11 @@ UI 已做响应式布局，支持桌面和移动端宽度。
 | 原生桌面窗口（pywebview） | 已完成 |
 | 项目截图与演示说明 | 已完成 |
 | 本地 git 仓库 | 已完成 |
+| 课程资料库与多格式导入（5A） | 已完成 |
+| 统一检索（笔记 + 文档分块，带引用） | 已完成 |
+| 截图 OCR（macOS Vision，可插拔）（5B） | 已完成 |
+| 网页正文采集 + SSRF 防护（5B） | 已完成 |
+| Notion 只读同步（幂等 + 归档）（5B） | 已完成 |
 | 自动总结 | 已完成基础版 |
 | 自动标签 | 已完成基础版 |
 | 本地 embedding | 已完成 |
@@ -359,7 +375,7 @@ UI 已做响应式布局，支持桌面和移动端宽度。
 | Weekly Review | 已完成 |
 | Web UI | 已完成 MVP |
 | 响应式布局 | 已完成基础版 |
-| 单元测试/API 测试 | 已完成（21 项） |
+| 单元测试/API 测试 | 已完成（71 项） |
 | README | 已完成 |
 | 后续桌面端架构预留 | 已完成 |
 | GitHub 仓库 | 已建立：`khalilpong/Local-AI-learning-Manager` |
@@ -376,7 +392,7 @@ python3 -m pytest -q
 结果：
 
 ```text
-21 passed
+71 passed
 ```
 
 已验证内容：
@@ -519,8 +535,10 @@ pip install sentence-transformers
 
 - 默认 embedding 是 hash embedding，语义理解能力不如真正的 sentence-transformers 模型。
 - UI 是基础生产力工具风格，还可以继续优化视觉和交互细节。
-- 尚未加入文件导入功能，例如 Markdown、PDF、网页剪藏。
-- 尚未做真正桌面端安装包。
+- 复习卡目前仍与笔记耦合（5C 将解耦为独立候选/审批模型）；文档分块尚未生成复习卡。
+- OCR 依赖本机安装 pyobjc（macOS Vision）；未安装时图片保持 `ocr_required`。
+- Notion 同步和网页采集需要真实令牌/外网，未在当前沙箱做端到端联网验证。
+- 尚未做真正桌面端安装包（.app），当前提供 pywebview 原生窗口和双击启动器。
 - 尚未配置 GitHub Actions 等持续集成流程。
 - 当前没有多用户和账号系统，因为项目目标是本地个人使用。
 
@@ -592,13 +610,15 @@ pip install sentence-transformers
 - [x] 使用 SHA-256 去重并支持失败重试；损坏资料保留原文件和可读错误状态。
 - [x] 将笔记和文档分块加入统一搜索和问答；文档结果返回课程、原始文件名和标题/页码/段落/幻灯片位置。
 
-#### 5B：截图、网页与 Notion
+#### 5B：截图、网页与 Notion（已完成）
 
 - [x] 完成 OCR Provider、网页安全边界和 Notion 只读同步设计。
-- [ ] 使用 macOS Vision 或可选 Tesseract 完成截图 OCR。
-- [ ] 增加网页正文采集，阻止本地地址和私有网络目标。
-- [ ] 使用受限的 Notion internal connection 同步显式授权页面。
-- [ ] 保证同步幂等，并将远端删除映射为本地归档。
+- [x] 截图 OCR：可插拔 `OcrProvider` 接口，提供 macOS Vision 后端（pyobjc，纯本地）和 `NullOcrProvider` 回退；导入图片时有 provider 就 OCR 并以「image OCR」引用位置入库，否则保持 `ocr_required` 并保留原图供重试；provider 就绪后重试即可补索引。
+- [x] 网页正文采集：`capture_page` 抓取 HTTP(S) 页面，提取标题和正文（剥离 script/style），记录规范 URL 和抓取时间；SSRF 防护拒绝非 HTTP 协议、localhost、以及 loopback/私网/链路本地/保留/组播地址（IP 字面量直接判定，主机名解析后逐一校验，解析器可注入以保证离线测试），重定向后 URL 二次校验。
+- [x] Notion 只读同步：`sync_notion` 通过可注入客户端拉取显式共享页面，单向且幂等；未变页面跳过、编辑页面重建索引、Notion 中消失的页面在本地归档（`archived_at`）而非删除，再次出现则解除归档；`HttpNotionClient` 仅从 `NOTION_TOKEN` 环境变量读取令牌，令牌绝不出现在任何 API 响应中。
+- [x] 归档语义通过对 `source_documents` 安全 `ADD COLUMN archived_at` 迁移实现（已在既有数据库上验证），归档文档从列表和统一检索中排除。
+
+验证：71 项 pytest 全部通过（新增 26 项覆盖 OCR、网页采集、SSRF 拒绝、Notion 幂等/归档/令牌保护）；浏览器实机验证了网页采集表单的 SSRF 拒绝提示、Notion 未配置时的禁用与提示、`archived_at` 迁移在既有库上无损、移动端无溢出、控制台无错误。因沙箱 DNS 将外网域名解析为私有地址，真实外网抓取与真实 Notion 令牌无法在此环境端到端验证，但索引与同步逻辑均以注入依赖完整覆盖。
 
 #### 5C：可控复习与 ChatGPT Bridge
 
@@ -615,7 +635,7 @@ pip install sentence-transformers
 - [ ] 增加数据库 schema 版本和事务迁移。
 - [ ] 增加解析器、OCR、Notion 和存储诊断。
 
-当前进度边界：5A 全部 6 个 Task（课程 schema、多格式解析器、受管理文件库、课程/资料 API、统一检索、课程资料库界面）均已实现、通过 `45 passed` 自动化测试，并完成桌面 + 移动浏览器实机验证：创建课程 → 导入 Markdown（解析为 3 个按标题分块的 chunk，状态 `ready`）→ SHA-256 去重（重复导入返回 `duplicate: true`）→ 统一搜索返回带「课程 · 标题层级」引用位置的文档结果并高亮命中词 → 课程范围问答只召回该课程 chunk → 移动端 375px 无横向溢出、控制台无错误。5A 已完整提交。下一步进入 5B（截图 OCR、网页采集、Notion 只读同步）。
+当前进度边界：5A 与 5B 均已完整实现、提交并通过 `71 passed` 自动化测试。5A（课程库与本地导入）经桌面 + 移动浏览器实机验证：创建课程 → 导入 Markdown（3 个按标题分块的 chunk）→ SHA-256 去重 → 统一搜索返回带「课程 · 标题层级」引用并高亮 → 课程范围问答只召回该课程 chunk。5B（截图 OCR、网页采集、Notion 只读同步）逻辑以注入依赖完整测试，SSRF 拒绝、Notion 未配置提示、`archived_at` 迁移均经实机验证；真实外网抓取和真实 Notion 令牌因沙箱网络隔离无法在此端到端验证。下一步进入 5C（复习卡与笔记解耦、候选审批、ChatGPT Study Pack 导出/导入）。
 
 ## 12. 简历描述建议
 
