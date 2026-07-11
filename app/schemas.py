@@ -47,3 +47,8 @@ class CourseUpdate(BaseModel):
     code: str | None = Field(default=None, max_length=40)
     term: str | None = Field(default=None, max_length=80)
     status: Literal["active", "archived"] | None = None
+
+
+class WebCaptureRequest(BaseModel):
+    course_id: int = Field(ge=1)
+    url: str = Field(min_length=1, max_length=2000)

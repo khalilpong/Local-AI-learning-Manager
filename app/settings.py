@@ -16,6 +16,7 @@ class Settings:
     ollama_model: str
     embedding_backend: str
     embedding_model: str
+    ocr_backend: str
 
 
 def _path_from_env(name: str, default: Path) -> Path:
@@ -46,4 +47,5 @@ def load_settings() -> Settings:
             "MEMORY_EMBEDDING_MODEL",
             "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
         ),
+        ocr_backend=os.getenv("MEMORY_OCR_BACKEND", "auto").strip().lower(),
     )

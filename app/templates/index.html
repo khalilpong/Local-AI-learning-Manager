@@ -73,6 +73,13 @@
               <input name="files" type="file" aria-label="Course files" multiple required accept=".md,.markdown,.txt,.pdf,.docx,.pptx,.png,.jpg,.jpeg,.webp">
               <button type="submit">Import</button>
             </form>
+            <form id="webCaptureForm" class="capture-form">
+              <select id="captureCourseSelect" name="course_id" aria-label="Capture course" required>
+                <option value="">Loading courses...</option>
+              </select>
+              <input name="url" type="url" aria-label="Web page URL" placeholder="https://article-to-save.com/..." required maxlength="2000">
+              <button type="submit">Capture page</button>
+            </form>
           </div>
           <div id="documentList" class="document-list">
             <p class="muted">Select a course to view local files.</p>

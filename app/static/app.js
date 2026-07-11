@@ -21,7 +21,9 @@ const modalBody = document.querySelector("#modalBody");
 const modalClose = document.querySelector("#modalClose");
 const courseForm = document.querySelector("#courseForm");
 const libraryImportForm = document.querySelector("#libraryImportForm");
+const webCaptureForm = document.querySelector("#webCaptureForm");
 const courseSelect = document.querySelector("#courseSelect");
+const captureCourseSelect = document.querySelector("#captureCourseSelect");
 const noteCourseSelect = document.querySelector("#noteCourseSelect");
 const searchCourseSelect = document.querySelector("#searchCourseSelect");
 const askCourseSelect = document.querySelector("#askCourseSelect");
@@ -209,6 +211,11 @@ async function loadCourses(preferredCourseId = null) {
     : '<option value="">Create a course first</option>';
   courseSelect.disabled = !courses.length;
   libraryImportForm.querySelector("button[type=submit]").disabled = !courses.length;
+  captureCourseSelect.innerHTML = courses.length
+    ? courseOptions(courses, "Select course")
+    : '<option value="">Create a course first</option>';
+  captureCourseSelect.disabled = !courses.length;
+  webCaptureForm.querySelector("button[type=submit]").disabled = !courses.length;
   noteCourseSelect.innerHTML = courseOptions(courses, "No course");
   searchCourseSelect.innerHTML = courseOptions(courses, "All courses");
   askCourseSelect.innerHTML = courseOptions(courses, "All courses");
@@ -218,6 +225,7 @@ async function loadCourses(preferredCourseId = null) {
     courseSelect.value = available.has(String(previousImport))
       ? String(previousImport)
       : String(courses[0].id);
+    captureCourseSelect.value = courseSelect.value;
     if (available.has(previousNote)) noteCourseSelect.value = previousNote;
     if (available.has(previousSearch)) searchCourseSelect.value = previousSearch;
     if (available.has(previousAsk)) askCourseSelect.value = previousAsk;
@@ -616,7 +624,34 @@ libraryImportForm.addEventListener("submit", async (event) => {
   }
 });
 
-courseSelect.addEventListener("change", loadDocuments);
+webCaptureForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const courseId = captureCourseSelect.value;
+  const url = webCaptureForm.elements.url.value.trim();
+  if (!courseId || !url) return;
+  const submit = webCaptureForm.querySelector("button[type=submit]");
+  submit.disabled = true;
+  libraryStatus.textContent = "Capturing page...";
+  try {
+    await requestJson("/api/library/capture", {
+      method: "POST",
+      body: JSON.stringify({ course_id: Number(courseId), url }),
+    });
+    webCaptureForm.elements.url.value = "";
+    // Show the captured page under its course in the document list.
+    courseSelect.value = courseId;
+    await loadDocuments();
+  } catch (error) {
+    libraryStatus.textContent = error.message;
+  } finally {
+    submit.disabled = false;
+  }
+});
+
+courseSelect.addEventListener("change", () => {
+  captureCourseSelect.value = courseSelect.value;
+  loadDocuments();
+});
 documentList.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-retry-document]");
   if (!button) return;

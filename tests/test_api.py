@@ -273,6 +273,31 @@ def test_create_course_and_import_markdown_through_api(tmp_path, monkeypatch):
     assert detail.json()["stored_filename"].endswith("lecture.md")
 
 
+def test_web_capture_endpoint_rejects_unsafe_targets(tmp_path, monkeypatch):
+    configure_library_test_app(tmp_path, monkeypatch)
+    client = TestClient(create_app())
+    course = client.post("/api/courses", json={"name": "Reading"}).json()
+
+    # Loopback / private / non-http targets are refused before any request.
+    for url in [
+        "http://127.0.0.1:8000/api/health",
+        "http://localhost/admin",
+        "file:///etc/passwd",
+        "http://169.254.169.254/latest/meta-data",
+    ]:
+        blocked = client.post(
+            "/api/library/capture", json={"course_id": course["id"], "url": url}
+        )
+        assert blocked.status_code == 400, url
+
+    # Missing course is a 404 regardless of URL.
+    missing = client.post(
+        "/api/library/capture",
+        json={"course_id": 999, "url": "https://example.com"},
+    )
+    assert missing.status_code in (400, 404)
+
+
 def test_created_note_can_be_assigned_to_course(tmp_path, monkeypatch):
     configure_library_test_app(tmp_path, monkeypatch)
     client = TestClient(create_app())

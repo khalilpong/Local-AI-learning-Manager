@@ -254,7 +254,8 @@ select:focus {
 }
 
 .course-form,
-.import-form {
+.import-form,
+.capture-form {
   display: grid;
   gap: 8px;
 }
@@ -263,8 +264,13 @@ select:focus {
   grid-template-columns: minmax(160px, 1fr) minmax(80px, 0.35fr) minmax(100px, 0.45fr) auto;
 }
 
-.import-form {
+.import-form,
+.capture-form {
   grid-template-columns: minmax(150px, 0.45fr) minmax(220px, 1fr) auto;
+}
+
+.capture-form {
+  grid-column: 1 / -1;
 }
 
 .document-list {
@@ -923,6 +929,7 @@ a.ghost-button {
 
   .course-form,
   .import-form,
+  .capture-form,
   .search-panel .inline-form {
     grid-template-columns: 1fr;
   }

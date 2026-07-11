@@ -28,10 +28,13 @@ from app.schemas import (
     NoteUpdate,
     SettingsUpdate,
     WeeklyReviewRequest,
+    WebCaptureRequest,
 )
 from app.services.embeddings import create_embedding_provider
 from app.services.documents import UnsupportedDocumentError
 from app.services.library import LibraryService, UploadTooLargeError
+from app.services.ocr import create_ocr_provider
+from app.services.webcapture import UnsafeUrlError, WebCaptureError
 from app.services.memory import MemoryService
 from app.services.ollama import create_ai_client
 from app.settings import Settings, load_settings
@@ -72,6 +75,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         embedder=app.state.memory_service.embedder,
         library_dir=active_settings.library_dir,
         max_upload_bytes=active_settings.max_upload_bytes,
+        ocr_provider=create_ocr_provider(active_settings.ocr_backend),
     )
     app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
@@ -188,6 +192,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Course not found") from exc
         except (UploadTooLargeError, UnsupportedDocumentError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        response.status_code = (
+            status.HTTP_200_OK if document["duplicate"] else status.HTTP_201_CREATED
+        )
+        return document
+
+    @app.post("/api/library/capture", status_code=status.HTTP_201_CREATED)
+    def capture_web_page(payload: WebCaptureRequest, request: Request, response: Response):
+        try:
+            document = get_library_service(request).import_web_page(
+                course_id=payload.course_id,
+                url=str(payload.url),
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Course not found") from exc
+        except UnsafeUrlError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except WebCaptureError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         response.status_code = (
             status.HTTP_200_OK if document["duplicate"] else status.HTTP_201_CREATED
         )

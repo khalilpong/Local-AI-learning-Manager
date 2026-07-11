@@ -11,11 +11,14 @@ from typing import BinaryIO
 from app.db import Database
 from app.services.documents import (
     DocumentParseError,
+    LocatedText,
     OcrRequiredError,
     chunk_located_text,
     detect_document_type,
     parse_document,
 )
+from app.services.ocr import NullOcrProvider, OcrProvider
+from app.services.webcapture import Fetcher, Resolver, capture_page
 
 
 class UploadTooLargeError(ValueError):
@@ -36,6 +39,7 @@ class LibraryService:
         embedder,
         library_dir: str | Path,
         max_upload_bytes: int,
+        ocr_provider: OcrProvider | None = None,
     ):
         if max_upload_bytes < 1:
             raise ValueError("max_upload_bytes must be positive")
@@ -43,6 +47,7 @@ class LibraryService:
         self.embedder = embedder
         self.library_dir = Path(library_dir)
         self.max_upload_bytes = max_upload_bytes
+        self.ocr_provider = ocr_provider or NullOcrProvider()
 
     def create_course(self, *, name: str, code: str = "", term: str = "") -> dict:
         clean_name = name.strip()
@@ -115,13 +120,88 @@ class LibraryService:
             temporary_path.unlink(missing_ok=True)
             raise
 
-    def _parse_and_index(
-        self, document_id: int, managed_path: Path, document_type: str
-    ) -> None:
+    def import_web_page(
+        self,
+        course_id: int,
+        url: str,
+        *,
+        fetcher: Fetcher | None = None,
+        resolver: Resolver | None = None,
+    ) -> dict:
+        self.db.get_course(course_id)
+        self.library_dir.mkdir(parents=True, exist_ok=True)
+        page = capture_page(url, fetcher=fetcher, resolver=resolver)
+
+        content_hash = hashlib.sha256(page.text.encode("utf-8")).hexdigest()
+        existing = self.db.find_source_document_by_hash(content_hash)
+        if existing is not None:
+            return self.get_document(existing["id"], duplicate=True)
+
+        safe_filename = sanitize_filename(f"{page.title}.txt")
+        managed_path = self.library_dir / f"{content_hash[:16]}-{safe_filename}"
+        managed_path.write_text(
+            f"# {page.title}\n{page.url}\n\n{page.text}", encoding="utf-8"
+        )
+        now = datetime.now(timezone.utc).isoformat()
+        document = self.db.insert_source_document(
+            course_id=course_id,
+            title=page.title,
+            source_type="web",
+            mime_type="text/html",
+            managed_path=str(managed_path),
+            origin_url=page.url,
+            external_id="",
+            content_hash=content_hash,
+            status="processing",
+            error_message="",
+            imported_at=now,
+            source_updated_at=page.retrieved_at,
+            updated_at=now,
+        )
+        self._index_blocks(
+            document["id"],
+            [LocatedText(page.text, "web page", page.title)],
+        )
+        return self.get_document(document["id"])
+
+    def _ocr_and_index(self, document_id: int, managed_path: Path) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        if not self.ocr_provider.is_available():
+            self.db.update_source_document(
+                document_id,
+                status="ocr_required",
+                error_message="No OCR provider is available for this image",
+                updated_at=now,
+            )
+            return
+        try:
+            text = self.ocr_provider.extract_text(managed_path).strip()
+        except Exception as exc:  # provider/runtime failures keep the file for retry
+            self.db.update_source_document(
+                document_id,
+                status="failed",
+                error_message=f"OCR failed: {exc}" or type(exc).__name__,
+                updated_at=now,
+            )
+            return
+        if not text:
+            self.db.update_source_document(
+                document_id,
+                status="ocr_required",
+                error_message="OCR produced no text; the image may have no readable content",
+                updated_at=now,
+            )
+            return
+        self._index_blocks(
+            document_id, [LocatedText(text, "image OCR", managed_path.stem)]
+        )
+
+    def _index_blocks(self, document_id: int, blocks: list[LocatedText]) -> None:
         now = datetime.now(timezone.utc).isoformat()
         try:
-            parsed = parse_document(managed_path, document_type)
-            chunks = chunk_located_text(parsed.blocks)
+            chunks = chunk_located_text(blocks)
+            if not chunks:
+                raise DocumentParseError("No extractable text")
             indexed_chunks = [
                 {
                     "position": chunk.position,
@@ -135,11 +215,26 @@ class LibraryService:
             ]
             self.db.insert_document_chunks(document_id, indexed_chunks)
             self.db.update_source_document(
+                document_id, status="ready", error_message="", updated_at=now
+            )
+        except (DocumentParseError, OSError, ValueError) as exc:
+            self.db.update_source_document(
                 document_id,
-                status="ready",
-                error_message="",
+                status="failed",
+                error_message=str(exc) or type(exc).__name__,
                 updated_at=now,
             )
+
+    def _parse_and_index(
+        self, document_id: int, managed_path: Path, document_type: str
+    ) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        if document_type == "image":
+            self._ocr_and_index(document_id, managed_path)
+            return
+        try:
+            parsed = parse_document(managed_path, document_type)
+            self._index_blocks(document_id, parsed.blocks)
         except OcrRequiredError as exc:
             self.db.update_source_document(
                 document_id,
