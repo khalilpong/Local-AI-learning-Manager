@@ -35,6 +35,8 @@ def test_migrates_existing_note_and_review_state_idempotently(tmp_path):
         last_grade="good",
         updated_at=NOW,
     )
+    with db.connect() as conn:
+        conn.execute("DELETE FROM schema_migrations WHERE version = 3")
 
     db.init()
     db.init()

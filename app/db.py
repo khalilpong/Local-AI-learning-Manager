@@ -52,6 +52,12 @@ class Database:
                     value TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS schema_migrations (
+                    version INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    applied_at TEXT NOT NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS weekly_reviews (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     week_start TEXT NOT NULL,
@@ -161,11 +167,60 @@ class Database:
                 WHERE source_chunk_id IS NOT NULL;
                 """
             )
-            self._migrate(conn)
-            self._migrate_study_cards(conn)
+            self._run_schema_migrations(conn)
             self._init_fts(conn)
 
-    def _migrate(self, conn: sqlite3.Connection) -> None:
+    def _run_schema_migrations(self, conn: sqlite3.Connection) -> None:
+        migrations = [
+            (1, "note links and embedding model", self._migrate_note_columns),
+            (2, "source document archive state", self._migrate_document_columns),
+            (3, "independent study cards", self._migrate_study_cards),
+        ]
+        for version, name, migration in migrations:
+            self._apply_migration(conn, version, name, migration)
+
+    def _apply_migration(
+        self,
+        conn: sqlite3.Connection,
+        version: int,
+        name: str,
+        migration,
+    ) -> None:
+        exists = conn.execute(
+            "SELECT 1 FROM schema_migrations WHERE version = ?", (version,)
+        ).fetchone()
+        if exists:
+            return
+        savepoint = f"schema_migration_{version}"
+        conn.execute(f"SAVEPOINT {savepoint}")
+        try:
+            migration(conn)
+            conn.execute(
+                """
+                INSERT INTO schema_migrations (version, name, applied_at)
+                VALUES (?, ?, ?)
+                """,
+                (version, name, datetime.now(timezone.utc).isoformat()),
+            )
+            conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+        except Exception:
+            conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+            conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+            raise
+
+    def schema_version(self) -> int:
+        if not self.path.exists():
+            return 0
+        with self.connect() as conn:
+            try:
+                row = conn.execute(
+                    "SELECT COALESCE(MAX(version), 0) AS version FROM schema_migrations"
+                ).fetchone()
+            except sqlite3.OperationalError:
+                return 0
+            return int(row["version"])
+
+    def _migrate_note_columns(self, conn: sqlite3.Connection) -> None:
         embedding_columns = {
             row["name"]
             for row in conn.execute("PRAGMA table_info(note_embeddings)").fetchall()
@@ -190,6 +245,7 @@ class Database:
                 "REFERENCES source_documents(id) ON DELETE SET NULL"
             )
 
+    def _migrate_document_columns(self, conn: sqlite3.Connection) -> None:
         document_columns = {
             row["name"]
             for row in conn.execute("PRAGMA table_info(source_documents)").fetchall()
