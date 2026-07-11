@@ -255,9 +255,21 @@ select:focus {
 
 .course-form,
 .import-form,
-.capture-form {
+.capture-form,
+.notion-form {
   display: grid;
   gap: 8px;
+}
+
+.notion-form {
+  align-items: center;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(150px, 0.45fr) auto minmax(0, 1fr);
+}
+
+.notion-hint {
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .course-form {
@@ -930,6 +942,7 @@ a.ghost-button {
   .course-form,
   .import-form,
   .capture-form,
+  .notion-form,
   .search-panel .inline-form {
     grid-template-columns: 1fr;
   }

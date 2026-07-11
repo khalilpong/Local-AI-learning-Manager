@@ -22,6 +22,9 @@ const modalClose = document.querySelector("#modalClose");
 const courseForm = document.querySelector("#courseForm");
 const libraryImportForm = document.querySelector("#libraryImportForm");
 const webCaptureForm = document.querySelector("#webCaptureForm");
+const notionSyncForm = document.querySelector("#notionSyncForm");
+const notionCourseSelect = document.querySelector("#notionCourseSelect");
+const notionHint = document.querySelector("#notionHint");
 const courseSelect = document.querySelector("#courseSelect");
 const captureCourseSelect = document.querySelector("#captureCourseSelect");
 const noteCourseSelect = document.querySelector("#noteCourseSelect");
@@ -216,6 +219,10 @@ async function loadCourses(preferredCourseId = null) {
     : '<option value="">Create a course first</option>';
   captureCourseSelect.disabled = !courses.length;
   webCaptureForm.querySelector("button[type=submit]").disabled = !courses.length;
+  notionCourseSelect.innerHTML = courses.length
+    ? courseOptions(courses, "Select course")
+    : '<option value="">Create a course first</option>';
+  notionCourseSelect.disabled = !courses.length;
   noteCourseSelect.innerHTML = courseOptions(courses, "No course");
   searchCourseSelect.innerHTML = courseOptions(courses, "All courses");
   askCourseSelect.innerHTML = courseOptions(courses, "All courses");
@@ -226,6 +233,7 @@ async function loadCourses(preferredCourseId = null) {
       ? String(previousImport)
       : String(courses[0].id);
     captureCourseSelect.value = courseSelect.value;
+    notionCourseSelect.value = courseSelect.value;
     if (available.has(previousNote)) noteCourseSelect.value = previousNote;
     if (available.has(previousSearch)) searchCourseSelect.value = previousSearch;
     if (available.has(previousAsk)) askCourseSelect.value = previousAsk;
@@ -648,8 +656,47 @@ webCaptureForm.addEventListener("submit", async (event) => {
   }
 });
 
+async function loadNotionStatus() {
+  try {
+    const data = await requestJson("/api/notion/status");
+    notionSyncForm.hidden = false;
+    const submit = notionSyncForm.querySelector("button[type=submit]");
+    submit.disabled = !data.configured;
+    notionCourseSelect.disabled = !data.configured;
+    notionHint.textContent = data.configured
+      ? "Read-only sync of shared pages."
+      : "Set NOTION_TOKEN in .env to enable Notion sync.";
+  } catch (error) {
+    notionSyncForm.hidden = true;
+  }
+}
+
+notionSyncForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const courseId = notionCourseSelect.value;
+  if (!courseId) return;
+  const submit = notionSyncForm.querySelector("button[type=submit]");
+  submit.disabled = true;
+  libraryStatus.textContent = "Syncing Notion...";
+  try {
+    const summary = await requestJson("/api/notion/sync", {
+      method: "POST",
+      body: JSON.stringify({ course_id: Number(courseId) }),
+    });
+    libraryStatus.textContent =
+      `Notion: ${summary.imported} new, ${summary.updated} updated, ${summary.archived} archived`;
+    courseSelect.value = courseId;
+    await loadDocuments();
+  } catch (error) {
+    libraryStatus.textContent = error.message;
+  } finally {
+    submit.disabled = false;
+  }
+});
+
 courseSelect.addEventListener("change", () => {
   captureCourseSelect.value = courseSelect.value;
+  notionCourseSelect.value = courseSelect.value;
   loadDocuments();
 });
 documentList.addEventListener("click", async (event) => {
@@ -828,6 +875,7 @@ loadTags();
 loadStudyQueue();
 loadStats();
 loadModels();
+loadNotionStatus();
 loadCourses().catch((error) => {
   libraryStatus.textContent = error.message;
 });

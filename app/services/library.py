@@ -17,6 +17,7 @@ from app.services.documents import (
     detect_document_type,
     parse_document,
 )
+from app.services.notion import NotionClient, NotionPage
 from app.services.ocr import NullOcrProvider, OcrProvider
 from app.services.webcapture import Fetcher, Resolver, capture_page
 
@@ -195,6 +196,111 @@ class LibraryService:
         self._index_blocks(
             document_id, [LocatedText(text, "image OCR", managed_path.stem)]
         )
+
+    def sync_notion(self, course_id: int, client: NotionClient) -> dict:
+        """One-way, idempotent, read-only pull of shared Notion pages.
+
+        Unchanged pages are skipped, edited pages are re-indexed, and pages that
+        no longer appear in Notion are archived locally instead of deleted.
+        """
+        self.db.get_course(course_id)
+        self.library_dir.mkdir(parents=True, exist_ok=True)
+        pages = client.list_shared_pages()
+        seen: set[str] = set()
+        imported = updated = unchanged = 0
+
+        for page in pages:
+            if not page.id:
+                continue
+            seen.add(page.id)
+            outcome = self._sync_one_notion_page(course_id, page)
+            if outcome == "imported":
+                imported += 1
+            elif outcome == "updated":
+                updated += 1
+            else:
+                unchanged += 1
+
+        archived = 0
+        for document in self.db.list_source_documents(
+            course_id, source_type="notion", include_archived=False
+        ):
+            if document["external_id"] and document["external_id"] not in seen:
+                now = datetime.now(timezone.utc).isoformat()
+                self.db.update_source_document(
+                    document["id"], archived_at=now, updated_at=now
+                )
+                archived += 1
+
+        return {
+            "imported": imported,
+            "updated": updated,
+            "unchanged": unchanged,
+            "archived": archived,
+        }
+
+    def _sync_one_notion_page(self, course_id: int, page: NotionPage) -> str:
+        # Page identity is the Notion id; hash includes it so distinct pages
+        # never collide on the unique content_hash even with identical text.
+        content_hash = hashlib.sha256(
+            f"notion:{page.id}:{page.text}".encode("utf-8")
+        ).hexdigest()
+        existing = self.db.find_source_document_by_external_id(page.id)
+        now = datetime.now(timezone.utc).isoformat()
+
+        if existing is not None:
+            unchanged = (
+                existing["source_updated_at"] == page.last_edited_time
+                and existing["content_hash"] == content_hash
+                and not existing["archived_at"]
+                and existing["status"] == "ready"
+            )
+            if unchanged:
+                return "unchanged"
+            managed_path = Path(existing["managed_path"])
+            managed_path.write_text(
+                f"# {page.title}\n{page.url}\n\n{page.text}", encoding="utf-8"
+            )
+            self.db.update_source_document(
+                existing["id"],
+                title=page.title,
+                origin_url=page.url,
+                content_hash=content_hash,
+                source_updated_at=page.last_edited_time,
+                archived_at="",
+                status="processing",
+                error_message="",
+                updated_at=now,
+            )
+            self._index_blocks(
+                existing["id"], [LocatedText(page.text, "notion page", page.title)]
+            )
+            return "updated"
+
+        safe_filename = sanitize_filename(f"notion-{page.id}.txt")
+        managed_path = self.library_dir / safe_filename
+        managed_path.write_text(
+            f"# {page.title}\n{page.url}\n\n{page.text}", encoding="utf-8"
+        )
+        document = self.db.insert_source_document(
+            course_id=course_id,
+            title=page.title,
+            source_type="notion",
+            mime_type="text/plain",
+            managed_path=str(managed_path),
+            origin_url=page.url,
+            external_id=page.id,
+            content_hash=content_hash,
+            status="processing",
+            error_message="",
+            imported_at=now,
+            source_updated_at=page.last_edited_time,
+            updated_at=now,
+        )
+        self._index_blocks(
+            document["id"], [LocatedText(page.text, "notion page", page.title)]
+        )
+        return "imported"
 
     def _index_blocks(self, document_id: int, blocks: list[LocatedText]) -> None:
         now = datetime.now(timezone.utc).isoformat()

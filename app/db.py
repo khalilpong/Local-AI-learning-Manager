@@ -103,6 +103,7 @@ class Database:
                     imported_at TEXT NOT NULL,
                     source_updated_at TEXT NOT NULL DEFAULT '',
                     updated_at TEXT NOT NULL,
+                    archived_at TEXT NOT NULL DEFAULT '',
                     FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
                 );
 
@@ -153,6 +154,15 @@ class Database:
             conn.execute(
                 "ALTER TABLE notes ADD COLUMN source_document_id INTEGER "
                 "REFERENCES source_documents(id) ON DELETE SET NULL"
+            )
+
+        document_columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(source_documents)").fetchall()
+        }
+        if document_columns and "archived_at" not in document_columns:
+            conn.execute(
+                "ALTER TABLE source_documents ADD COLUMN archived_at TEXT NOT NULL DEFAULT ''"
             )
 
     def _init_fts(self, conn: sqlite3.Connection) -> None:
@@ -521,26 +531,44 @@ class Database:
             ).fetchone()
         return self.get_source_document(int(row["id"])) if row else None
 
-    def list_source_documents(self, course_id: int | None = None) -> list[dict]:
+    def find_source_document_by_external_id(self, external_id: str) -> dict | None:
+        if not external_id:
+            return None
         with self.connect() as conn:
-            if course_id is None:
-                rows = conn.execute(
-                    """
-                    SELECT source_documents.id
-                    FROM source_documents
-                    ORDER BY datetime(imported_at) DESC, id DESC
-                    """
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    """
-                    SELECT source_documents.id
-                    FROM source_documents
-                    WHERE course_id = ?
-                    ORDER BY datetime(imported_at) DESC, id DESC
-                    """,
-                    (course_id,),
-                ).fetchall()
+            row = conn.execute(
+                "SELECT id FROM source_documents WHERE external_id = ?",
+                (external_id,),
+            ).fetchone()
+        return self.get_source_document(int(row["id"])) if row else None
+
+    def list_source_documents(
+        self,
+        course_id: int | None = None,
+        *,
+        source_type: str | None = None,
+        include_archived: bool = False,
+    ) -> list[dict]:
+        conditions: list[str] = []
+        parameters: list[object] = []
+        if course_id is not None:
+            conditions.append("course_id = ?")
+            parameters.append(course_id)
+        if source_type is not None:
+            conditions.append("source_type = ?")
+            parameters.append(source_type)
+        if not include_archived:
+            conditions.append("archived_at = ''")
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT source_documents.id
+                FROM source_documents
+                {where_clause}
+                ORDER BY datetime(imported_at) DESC, id DESC
+                """,
+                parameters,
+            ).fetchall()
         return [self.get_source_document(int(row["id"])) for row in rows]
 
     def update_source_document(self, document_id: int, **fields: str) -> dict:
@@ -554,6 +582,8 @@ class Database:
             "error_message",
             "source_updated_at",
             "updated_at",
+            "archived_at",
+            "content_hash",
         }
         updates = {key: value for key, value in fields.items() if key in allowed}
         if not updates:
@@ -616,7 +646,10 @@ class Database:
         course_id: int | None = None,
         source_document_id: int | None = None,
     ) -> list[dict]:
-        conditions = ["source_documents.status = 'ready'"]
+        conditions = [
+            "source_documents.status = 'ready'",
+            "source_documents.archived_at = ''",
+        ]
         parameters: list[int] = []
         if course_id is not None:
             conditions.append("source_documents.course_id = ?")

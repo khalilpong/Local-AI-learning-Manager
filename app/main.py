@@ -26,6 +26,7 @@ from app.schemas import (
     GradeRequest,
     NoteCreate,
     NoteUpdate,
+    NotionSyncRequest,
     SettingsUpdate,
     WeeklyReviewRequest,
     WebCaptureRequest,
@@ -33,6 +34,7 @@ from app.schemas import (
 from app.services.embeddings import create_embedding_provider
 from app.services.documents import UnsupportedDocumentError
 from app.services.library import LibraryService, UploadTooLargeError
+from app.services.notion import HttpNotionClient, NotionNotConfiguredError
 from app.services.ocr import create_ocr_provider
 from app.services.webcapture import UnsafeUrlError, WebCaptureError
 from app.services.memory import MemoryService
@@ -77,6 +79,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         max_upload_bytes=active_settings.max_upload_bytes,
         ocr_provider=create_ocr_provider(active_settings.ocr_backend),
     )
+    app.state.notion_client = HttpNotionClient()
     app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
     @app.get("/", response_class=HTMLResponse)
@@ -214,6 +217,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             status.HTTP_200_OK if document["duplicate"] else status.HTTP_201_CREATED
         )
         return document
+
+    @app.get("/api/notion/status")
+    def notion_status(request: Request):
+        client = request.app.state.notion_client
+        return {"configured": bool(client and client.is_configured())}
+
+    @app.post("/api/notion/sync")
+    def sync_notion(payload: NotionSyncRequest, request: Request):
+        client = request.app.state.notion_client
+        if client is None or not client.is_configured():
+            raise HTTPException(
+                status_code=400,
+                detail="Notion is not configured. Set NOTION_TOKEN in the environment.",
+            )
+        try:
+            return get_library_service(request).sync_notion(payload.course_id, client)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Course not found") from exc
+        except NotionNotConfiguredError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except (RuntimeError, OSError) as exc:
+            raise HTTPException(status_code=502, detail=f"Notion sync failed: {exc}") from exc
 
     @app.get("/api/library/documents/{document_id}")
     def get_library_document(document_id: int, request: Request):

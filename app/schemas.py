@@ -52,3 +52,7 @@ class CourseUpdate(BaseModel):
 class WebCaptureRequest(BaseModel):
     course_id: int = Field(ge=1)
     url: str = Field(min_length=1, max_length=2000)
+
+
+class NotionSyncRequest(BaseModel):
+    course_id: int = Field(ge=1)

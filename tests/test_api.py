@@ -298,6 +298,33 @@ def test_web_capture_endpoint_rejects_unsafe_targets(tmp_path, monkeypatch):
     assert missing.status_code in (400, 404)
 
 
+def test_notion_endpoints_require_configuration_without_leaking_token(tmp_path, monkeypatch):
+    monkeypatch.delenv("NOTION_TOKEN", raising=False)
+    configure_library_test_app(tmp_path, monkeypatch)
+    client = TestClient(create_app())
+    course = client.post("/api/courses", json={"name": "Notion"}).json()
+
+    status_response = client.get("/api/notion/status")
+    assert status_response.status_code == 200
+    assert status_response.json() == {"configured": False}
+
+    sync = client.post("/api/notion/sync", json={"course_id": course["id"]})
+    assert sync.status_code == 400
+    # The error explains configuration is missing but never echoes a token value.
+    assert "token" not in sync.json()["detail"].lower() or "NOTION_TOKEN" in sync.json()["detail"]
+
+
+def test_notion_status_reports_configured_when_token_present(tmp_path, monkeypatch):
+    monkeypatch.setenv("NOTION_TOKEN", "secret-token-value")
+    configure_library_test_app(tmp_path, monkeypatch)
+    client = TestClient(create_app())
+
+    status_response = client.get("/api/notion/status")
+    assert status_response.json() == {"configured": True}
+    # The token itself must never appear in any response body.
+    assert "secret-token-value" not in status_response.text
+
+
 def test_created_note_can_be_assigned_to_course(tmp_path, monkeypatch):
     configure_library_test_app(tmp_path, monkeypatch)
     client = TestClient(create_app())
