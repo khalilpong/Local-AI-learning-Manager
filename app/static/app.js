@@ -34,6 +34,10 @@ const searchCourseSelect = document.querySelector("#searchCourseSelect");
 const askCourseSelect = document.querySelector("#askCourseSelect");
 const documentList = document.querySelector("#documentList");
 const libraryStatus = document.querySelector("#libraryStatus");
+const studyPackCourseSelect = document.querySelector("#studyPackCourseSelect");
+const studyPackDownload = document.querySelector("#studyPackDownload");
+const studyResultImportForm = document.querySelector("#studyResultImportForm");
+const studyBridgeStatus = document.querySelector("#studyBridgeStatus");
 
 let activeTag = null;
 let lastQuery = "";
@@ -208,6 +212,7 @@ async function loadCourses(preferredCourseId = null) {
   const previousNote = noteCourseSelect.value;
   const previousSearch = searchCourseSelect.value;
   const previousAsk = askCourseSelect.value;
+  const previousStudyPack = studyPackCourseSelect.value;
   const data = await requestJson("/api/courses");
   const courses = data.courses;
 
@@ -228,6 +233,9 @@ async function loadCourses(preferredCourseId = null) {
   noteCourseSelect.innerHTML = courseOptions(courses, "No course");
   searchCourseSelect.innerHTML = courseOptions(courses, "All courses");
   askCourseSelect.innerHTML = courseOptions(courses, "All courses");
+  studyPackCourseSelect.innerHTML = courseOptions(courses, "Select course");
+  studyPackDownload.disabled = !courses.length;
+  studyResultImportForm.querySelector("button[type=submit]").disabled = !courses.length;
 
   if (courses.length) {
     const available = new Set(courses.map((course) => String(course.id)));
@@ -239,6 +247,9 @@ async function loadCourses(preferredCourseId = null) {
     if (available.has(previousNote)) noteCourseSelect.value = previousNote;
     if (available.has(previousSearch)) searchCourseSelect.value = previousSearch;
     if (available.has(previousAsk)) askCourseSelect.value = previousAsk;
+    studyPackCourseSelect.value = available.has(previousStudyPack)
+      ? previousStudyPack
+      : String(courses[0].id);
   }
   await loadDocuments();
 }
@@ -497,6 +508,39 @@ candidateList.addEventListener("click", async (event) => {
   } catch (error) {
     button.disabled = false;
     candidateCount.textContent = error.message;
+  }
+});
+
+studyPackDownload.addEventListener("click", () => {
+  const courseId = studyPackCourseSelect.value;
+  if (!courseId) return;
+  window.location.assign(`/api/study-pack?course_id=${encodeURIComponent(courseId)}`);
+});
+
+studyResultImportForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const courseId = studyPackCourseSelect.value;
+  const file = studyResultImportForm.elements.file.files[0];
+  if (!courseId || !file) return;
+  const button = studyResultImportForm.querySelector("button[type=submit]");
+  const body = new FormData();
+  body.set("course_id", courseId);
+  body.set("file", file);
+  button.disabled = true;
+  studyBridgeStatus.textContent = "Importing reviewed result...";
+  try {
+    const summary = await requestJson("/api/study-pack/import", {
+      method: "POST",
+      body,
+    });
+    studyResultImportForm.reset();
+    studyBridgeStatus.textContent =
+      `${summary.notes} notes, ${summary.card_candidates} card candidates imported`;
+    await Promise.all([loadCandidates(), loadNotes(), loadTags(), loadStats()]);
+  } catch (error) {
+    studyBridgeStatus.textContent = error.message;
+  } finally {
+    button.disabled = false;
   }
 });
 

@@ -711,6 +711,22 @@ a.ghost-button {
   margin-top: 18px;
 }
 
+.study-bridge-panel {
+  margin-top: 18px;
+}
+
+.study-bridge-controls {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(180px, 0.45fr) auto minmax(300px, 1fr);
+}
+
+.study-result-form {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(180px, 1fr) auto;
+}
+
 .candidate-list {
   display: grid;
   gap: 10px;
@@ -995,7 +1011,9 @@ a.ghost-button {
   .import-form,
   .capture-form,
   .notion-form,
-  .search-panel .inline-form {
+  .search-panel .inline-form,
+  .study-bridge-controls,
+  .study-result-form {
     grid-template-columns: 1fr;
   }
 

@@ -40,6 +40,7 @@ from app.services.ocr import create_ocr_provider
 from app.services.webcapture import UnsafeUrlError, WebCaptureError
 from app.services.memory import MemoryService
 from app.services.ollama import create_ai_client
+from app.services.study_bridge import StudyBridgeService
 from app.settings import Settings, load_settings
 
 
@@ -417,6 +418,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "Content-Disposition": 'attachment; filename="local-memory-export.md"'
             },
         )
+
+    @app.get("/api/study-pack")
+    def export_study_pack(course_id: int, request: Request):
+        try:
+            content = StudyBridgeService(get_service(request)).export_pack(course_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Course not found") from exc
+        return PlainTextResponse(
+            content,
+            media_type="text/markdown; charset=utf-8",
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="study-pack-course-{course_id}.md"'
+                )
+            },
+        )
+
+    @app.post("/api/study-pack/import")
+    def import_study_result(
+        request: Request,
+        course_id: int = Form(...),
+        file: UploadFile = File(...),
+    ):
+        filename = (file.filename or "").lower()
+        if not filename.endswith((".md", ".markdown")):
+            raise HTTPException(status_code=400, detail="Study result must be Markdown")
+        limit = min(request.app.state.settings.max_upload_bytes, 2 * 1024 * 1024)
+        raw = file.file.read(limit + 1)
+        if len(raw) > limit:
+            raise HTTPException(status_code=400, detail="Study result is too large")
+        try:
+            markdown = raw.decode("utf-8")
+            return StudyBridgeService(get_service(request)).import_result(
+                course_id, markdown
+            )
+        except UnicodeDecodeError as exc:
+            raise HTTPException(status_code=400, detail="Markdown must use UTF-8") from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Course not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/reviews/weekly")
     def list_weekly_reviews(request: Request):

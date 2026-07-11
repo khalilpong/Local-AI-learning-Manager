@@ -41,6 +41,8 @@ def test_homepage_renders_app_shell(tmp_path, monkeypatch):
     assert 'id="searchCourseSelect"' in response.text
     assert 'id="askCourseSelect"' in response.text
     assert 'id="candidateList"' in response.text
+    assert 'id="studyPackCourseSelect"' in response.text
+    assert 'id="studyResultImportForm"' in response.text
 
 
 def test_favicon_does_not_log_404(tmp_path, monkeypatch):
@@ -235,6 +237,70 @@ def test_candidate_reject_and_active_card_suspend_through_api(tmp_path, monkeypa
     assert rejected.json()["state"] == "rejected"
     assert approved.json()["state"] == "active"
     assert suspended.json()["state"] == "suspended"
+
+
+def test_study_pack_export_and_result_import_through_api(tmp_path, monkeypatch):
+    configure_library_test_app(tmp_path, monkeypatch)
+    client = TestClient(create_app())
+    course = client.post("/api/courses", json={"name": "Signals", "code": "SIG"}).json()
+    client.post(
+        "/api/notes",
+        json={
+            "title": "Fourier intuition",
+            "content": "Signals can be represented by frequency components.",
+            "course_id": course["id"],
+        },
+    )
+
+    exported = client.get("/api/study-pack", params={"course_id": course["id"]})
+
+    assert exported.status_code == 200
+    assert "# Local Memory Study Pack" in exported.text
+    assert "Fourier intuition" in exported.text
+    assert "attachment" in exported.headers["content-disposition"]
+
+    result = b"""# Local Memory Study Result
+## Reviewed Note
+Title: Aliasing correction
+Source: ChatGPT study result
+### Content
+Sampling below Nyquist can cause aliasing.
+## Card Candidate
+Prompt: What causes aliasing?
+Source: lecture.md \xc2\xb7 Sampling
+### Answer
+Sampling below twice the highest frequency.
+"""
+    imported = client.post(
+        "/api/study-pack/import",
+        data={"course_id": str(course["id"])},
+        files={"file": ("study-result.md", result, "text/markdown")},
+    )
+
+    assert imported.status_code == 200
+    assert imported.json() == {"notes": 1, "card_candidates": 1}
+    assert any(
+        card["prompt"] == "What causes aliasing?"
+        for card in client.get(
+            "/api/study/candidates", params={"course_id": course["id"]}
+        ).json()["cards"]
+    )
+
+
+def test_study_result_import_rejects_bad_file_and_missing_course(tmp_path, monkeypatch):
+    configure_library_test_app(tmp_path, monkeypatch)
+    client = TestClient(create_app())
+    course = client.post("/api/courses", json={"name": "Validation"}).json()
+
+    wrong_type = client.post(
+        "/api/study-pack/import",
+        data={"course_id": str(course["id"])},
+        files={"file": ("result.txt", b"text", "text/plain")},
+    )
+    missing = client.get("/api/study-pack", params={"course_id": 99999})
+
+    assert wrong_type.status_code == 400
+    assert missing.status_code == 404
 
 
 def test_question_answer_endpoint_returns_sources(tmp_path, monkeypatch):

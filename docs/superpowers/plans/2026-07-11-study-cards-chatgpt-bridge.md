@@ -147,11 +147,11 @@ Run API and full tests, then commit `Add candidate approval workflow`.
 - `GET /api/study-pack?course_id=<id>`
 - `POST /api/study-pack/import` multipart fields `course_id` and `file`
 
-- [ ] **Step 1: Write failing bridge tests**
+- [x] **Step 1: Write failing bridge tests**
 
 Export must include project instructions, course metadata, note/document content, and citations. Import must accept repeated `## Reviewed Note` and `## Card Candidate` sections, create local notes/candidates, reject malformed/empty input, and never call a network API.
 
-- [ ] **Step 2: Implement the constrained Markdown format**
+- [x] **Step 2: Implement the constrained Markdown format**
 
 Use these exact sections:
 
@@ -171,7 +171,7 @@ Answer text
 
 Parse headings and field prefixes line by line; do not execute HTML or interpret paths/URLs. Imported notes and cards remain local and cards remain candidates.
 
-- [ ] **Step 3: Add API and UI controls**
+- [x] **Step 3: Add API and UI controls**
 
 Provide course-scoped Study Pack download and `.md` import controls. Display imported note/card counts and refresh candidates.
 

@@ -149,6 +149,23 @@
           </div>
         </section>
 
+        <section class="panel study-bridge-panel" id="studyBridge">
+          <div class="section-heading">
+            <h2>ChatGPT Study Pack</h2>
+            <span id="studyBridgeStatus" role="status">Manual Markdown exchange</span>
+          </div>
+          <div class="study-bridge-controls">
+            <select id="studyPackCourseSelect" aria-label="Study Pack course">
+              <option value="">Select course</option>
+            </select>
+            <button type="button" id="studyPackDownload">Download Study Pack</button>
+            <form id="studyResultImportForm" class="study-result-form">
+              <input name="file" type="file" aria-label="ChatGPT study result" accept=".md,.markdown,text/markdown" required>
+              <button type="submit" class="ghost-button">Import result</button>
+            </form>
+          </div>
+        </section>
+
         <section class="grid study-grid">
           <section class="panel" id="study">
             <div class="section-heading">
