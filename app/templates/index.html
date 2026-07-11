@@ -166,6 +166,20 @@
           </div>
         </section>
 
+        <section class="panel local-data-panel" id="localData">
+          <div class="section-heading">
+            <h2>Local data</h2>
+            <span id="backupStatus" role="status">Backup and restore</span>
+          </div>
+          <div class="local-data-controls">
+            <a class="ghost-button" id="backupDownload" href="/api/backup" download>Download backup</a>
+            <form id="backupRestoreForm" class="backup-restore-form">
+              <input name="file" type="file" aria-label="Local Memory backup" accept=".zip,application/zip" required>
+              <button type="submit" class="danger-button">Restore backup</button>
+            </form>
+          </div>
+        </section>
+
         <section class="grid study-grid">
           <section class="panel" id="study">
             <div class="section-heading">

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from pathlib import Path
+import tempfile
 
 from fastapi import (
     FastAPI,
@@ -14,7 +15,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -33,6 +34,7 @@ from app.schemas import (
     WebCaptureRequest,
 )
 from app.services.embeddings import create_embedding_provider
+from app.services.backup import BackupError, BackupService
 from app.services.documents import UnsupportedDocumentError
 from app.services.library import LibraryService, UploadTooLargeError
 from app.services.notion import HttpNotionClient, NotionNotConfiguredError
@@ -42,6 +44,7 @@ from app.services.memory import MemoryService
 from app.services.ollama import create_ai_client
 from app.services.study_bridge import StudyBridgeService
 from app.settings import Settings, load_settings
+from starlette.background import BackgroundTask
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -418,6 +421,60 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "Content-Disposition": 'attachment; filename="local-memory-export.md"'
             },
         )
+
+    @app.get("/api/backup")
+    def download_backup(request: Request):
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix="local-memory-", suffix="-backup.zip"
+        )
+        Path(temporary_name).unlink(missing_ok=True)
+        try:
+            Path(temporary_name).parent.mkdir(parents=True, exist_ok=True)
+            BackupService(
+                request.app.state.settings.db_path,
+                request.app.state.settings.library_dir,
+            ).create_backup(temporary_name)
+        except Exception:
+            Path(temporary_name).unlink(missing_ok=True)
+            raise
+        finally:
+            try:
+                import os
+
+                os.close(descriptor)
+            except OSError:
+                pass
+        return FileResponse(
+            temporary_name,
+            media_type="application/zip",
+            filename="local-memory-backup.zip",
+            background=BackgroundTask(Path(temporary_name).unlink, missing_ok=True),
+        )
+
+    @app.post("/api/backup/restore")
+    def restore_backup(request: Request, file: UploadFile = File(...)):
+        if not (file.filename or "").lower().endswith(".zip"):
+            raise HTTPException(status_code=400, detail="Backup must be a ZIP archive")
+        descriptor, temporary_name = tempfile.mkstemp(suffix="-restore.zip")
+        total = 0
+        limit = 2 * 1024 * 1024 * 1024
+        try:
+            import os
+
+            with os.fdopen(descriptor, "wb") as target:
+                while chunk := file.file.read(1024 * 1024):
+                    total += len(chunk)
+                    if total > limit:
+                        raise BackupError("Backup exceeds the 2 GB restore limit")
+                    target.write(chunk)
+            return BackupService(
+                request.app.state.settings.db_path,
+                request.app.state.settings.library_dir,
+            ).restore_backup(temporary_name)
+        except BackupError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        finally:
+            Path(temporary_name).unlink(missing_ok=True)
 
     @app.get("/api/study-pack")
     def export_study_pack(course_id: int, request: Request):

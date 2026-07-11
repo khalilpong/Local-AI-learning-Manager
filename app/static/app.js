@@ -38,6 +38,8 @@ const studyPackCourseSelect = document.querySelector("#studyPackCourseSelect");
 const studyPackDownload = document.querySelector("#studyPackDownload");
 const studyResultImportForm = document.querySelector("#studyResultImportForm");
 const studyBridgeStatus = document.querySelector("#studyBridgeStatus");
+const backupRestoreForm = document.querySelector("#backupRestoreForm");
+const backupStatus = document.querySelector("#backupStatus");
 
 let activeTag = null;
 let lastQuery = "";
@@ -540,6 +542,27 @@ studyResultImportForm.addEventListener("submit", async (event) => {
   } catch (error) {
     studyBridgeStatus.textContent = error.message;
   } finally {
+    button.disabled = false;
+  }
+});
+
+backupRestoreForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const file = backupRestoreForm.elements.file.files[0];
+  if (!file) return;
+  if (!window.confirm("Restore this backup? Current notes and library files will be replaced.")) {
+    return;
+  }
+  const button = backupRestoreForm.querySelector("button[type=submit]");
+  const body = new FormData();
+  body.set("file", file);
+  button.disabled = true;
+  backupStatus.textContent = "Validating and restoring...";
+  try {
+    await requestJson("/api/backup/restore", { method: "POST", body });
+    window.location.reload();
+  } catch (error) {
+    backupStatus.textContent = error.message;
     button.disabled = false;
   }
 });

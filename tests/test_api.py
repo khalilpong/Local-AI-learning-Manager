@@ -43,6 +43,8 @@ def test_homepage_renders_app_shell(tmp_path, monkeypatch):
     assert 'id="candidateList"' in response.text
     assert 'id="studyPackCourseSelect"' in response.text
     assert 'id="studyResultImportForm"' in response.text
+    assert 'id="backupDownload"' in response.text
+    assert 'id="backupRestoreForm"' in response.text
 
 
 def test_favicon_does_not_log_404(tmp_path, monkeypatch):
@@ -301,6 +303,40 @@ def test_study_result_import_rejects_bad_file_and_missing_course(tmp_path, monke
 
     assert wrong_type.status_code == 400
     assert missing.status_code == 404
+
+
+def test_backup_download_and_restore_through_api(tmp_path, monkeypatch):
+    configure_library_test_app(tmp_path, monkeypatch)
+    client = TestClient(create_app())
+    note = client.post(
+        "/api/notes", json={"title": "Keep me", "content": "Backup content."}
+    ).json()
+
+    backup = client.get("/api/backup")
+    assert backup.status_code == 200
+    assert backup.content[:2] == b"PK"
+
+    assert client.delete(f"/api/notes/{note['id']}").status_code == 204
+    restored = client.post(
+        "/api/backup/restore",
+        files={"file": ("local-memory-backup.zip", backup.content, "application/zip")},
+    )
+
+    assert restored.status_code == 200
+    assert restored.json()["schema_version"] == 3
+    assert client.get(f"/api/notes/{note['id']}").json()["note"]["title"] == "Keep me"
+
+
+def test_backup_restore_api_rejects_invalid_zip(tmp_path, monkeypatch):
+    configure_library_test_app(tmp_path, monkeypatch)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/backup/restore",
+        files={"file": ("broken.zip", b"bad", "application/zip")},
+    )
+
+    assert response.status_code == 400
 
 
 def test_question_answer_endpoint_returns_sources(tmp_path, monkeypatch):

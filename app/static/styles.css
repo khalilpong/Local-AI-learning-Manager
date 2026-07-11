@@ -715,6 +715,10 @@ a.ghost-button {
   margin-top: 18px;
 }
 
+.local-data-panel {
+  margin-top: 18px;
+}
+
 .study-bridge-controls {
   display: grid;
   gap: 10px;
@@ -725,6 +729,25 @@ a.ghost-button {
   display: grid;
   gap: 8px;
   grid-template-columns: minmax(180px, 1fr) auto;
+}
+
+.local-data-controls,
+.backup-restore-form {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(280px, 1fr);
+}
+
+.backup-restore-form {
+  grid-template-columns: minmax(220px, 1fr) auto;
+}
+
+.danger-button {
+  background: #a43d31;
+}
+
+.danger-button:hover {
+  background: #833027;
 }
 
 .candidate-list {
@@ -1013,7 +1036,9 @@ a.ghost-button {
   .notion-form,
   .search-panel .inline-form,
   .study-bridge-controls,
-  .study-result-form {
+  .study-result-form,
+  .local-data-controls,
+  .backup-restore-form {
     grid-template-columns: 1fr;
   }
 
