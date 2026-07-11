@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -29,3 +31,16 @@ class GradeRequest(BaseModel):
 
 class SettingsUpdate(BaseModel):
     ollama_model: str = Field(min_length=1, max_length=120)
+
+
+class CourseCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    code: str = Field(default="", max_length=40)
+    term: str = Field(default="", max_length=80)
+
+
+class CourseUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    code: str | None = Field(default=None, max_length=40)
+    term: str | None = Field(default=None, max_length=80)
+    status: Literal["active", "archived"] | None = None

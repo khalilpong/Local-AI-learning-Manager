@@ -3,6 +3,13 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 
 
+def configure_library_test_app(tmp_path, monkeypatch):
+    monkeypatch.setenv("MEMORY_DB_PATH", str(tmp_path / "api.db"))
+    monkeypatch.setenv("MEMORY_LIBRARY_DIR", str(tmp_path / "library"))
+    monkeypatch.setenv("MEMORY_AI_MODE", "offline")
+    monkeypatch.setenv("MEMORY_EMBEDDING_BACKEND", "hash")
+
+
 def test_health_reports_local_dependencies(tmp_path, monkeypatch):
     monkeypatch.setenv("MEMORY_DB_PATH", str(tmp_path / "api.db"))
     app = create_app()
@@ -200,3 +207,108 @@ def test_question_answer_endpoint_returns_sources(tmp_path, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["sources"][0]["title"] == "Local privacy"
+
+
+def test_create_update_and_list_courses_through_api(tmp_path, monkeypatch):
+    configure_library_test_app(tmp_path, monkeypatch)
+    client = TestClient(create_app())
+
+    created = client.post(
+        "/api/courses",
+        json={"name": "Computer Networks", "code": "CN", "term": "2026"},
+    )
+
+    assert created.status_code == 201
+    assert created.json()["code"] == "CN"
+    assert client.get("/api/courses").json()["courses"][0]["status"] == "active"
+
+    archived = client.put(
+        f"/api/courses/{created.json()['id']}", json={"status": "archived"}
+    )
+    assert archived.status_code == 200
+    assert archived.json()["status"] == "archived"
+    assert client.get("/api/courses").json()["courses"] == []
+    assert len(client.get("/api/courses", params={"status": "all"}).json()["courses"]) == 1
+
+
+def test_create_course_and_import_markdown_through_api(tmp_path, monkeypatch):
+    configure_library_test_app(tmp_path, monkeypatch)
+    client = TestClient(create_app())
+    course = client.post(
+        "/api/courses", json={"name": "Networks", "code": "CN"}
+    )
+    assert course.status_code == 201
+
+    imported = client.post(
+        "/api/library/import",
+        data={"course_id": str(course.json()["id"])},
+        files={
+            "file": (
+                "lecture.md",
+                b"# Routing\nDistance vector routing uses relaxation.",
+                "text/markdown",
+            )
+        },
+    )
+
+    assert imported.status_code == 201
+    assert imported.json()["status"] == "ready"
+    assert imported.json()["chunks"][0]["location_label"] == "Routing"
+
+    documents = client.get(
+        "/api/library/documents", params={"course_id": course.json()["id"]}
+    )
+    assert documents.status_code == 200
+    assert documents.json()["documents"][0]["id"] == imported.json()["id"]
+
+    detail = client.get(f"/api/library/documents/{imported.json()['id']}")
+    assert detail.status_code == 200
+    assert detail.json()["stored_filename"].endswith("lecture.md")
+
+
+def test_library_api_reports_duplicate_and_missing_resources(tmp_path, monkeypatch):
+    configure_library_test_app(tmp_path, monkeypatch)
+    client = TestClient(create_app())
+    course = client.post("/api/courses", json={"name": "Systems"}).json()
+
+    first = client.post(
+        "/api/library/import",
+        data={"course_id": str(course["id"])},
+        files={"file": ("a.txt", b"same text", "text/plain")},
+    )
+    duplicate = client.post(
+        "/api/library/import",
+        data={"course_id": str(course["id"])},
+        files={"file": ("b.txt", b"same text", "text/plain")},
+    )
+
+    assert first.status_code == 201
+    assert duplicate.status_code == 200
+    assert duplicate.json()["duplicate"] is True
+    assert duplicate.json()["id"] == first.json()["id"]
+
+    missing_course = client.post(
+        "/api/library/import",
+        data={"course_id": "999"},
+        files={"file": ("a.txt", b"text", "text/plain")},
+    )
+    assert missing_course.status_code == 404
+    assert client.get("/api/library/documents/999").status_code == 404
+    assert client.put("/api/courses/999", json={"name": "Missing"}).status_code == 404
+
+
+def test_failed_document_can_be_retried_through_api(tmp_path, monkeypatch):
+    configure_library_test_app(tmp_path, monkeypatch)
+    client = TestClient(create_app())
+    course = client.post("/api/courses", json={"name": "PDF"}).json()
+    imported = client.post(
+        "/api/library/import",
+        data={"course_id": str(course["id"])},
+        files={"file": ("broken.pdf", b"not a pdf", "application/pdf")},
+    ).json()
+
+    assert imported["status"] == "failed"
+    retried = client.post(f"/api/library/documents/{imported['id']}/retry")
+    assert retried.status_code == 200
+    assert retried.json()["status"] == "failed"
+    assert retried.json()["error_message"]
