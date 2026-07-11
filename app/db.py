@@ -181,15 +181,26 @@ class Database:
         embedding_model: str,
         created_at: str,
         updated_at: str,
+        course_id: int | None = None,
     ) -> dict:
         with self.connect() as conn:
             cur = conn.execute(
                 """
-                INSERT INTO notes
-                    (title, content, source, summary, ai_available, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO notes (
+                    title, content, source, summary, ai_available,
+                    created_at, updated_at, course_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (title, content, source, summary, int(ai_available), created_at, updated_at),
+                (
+                    title,
+                    content,
+                    source,
+                    summary,
+                    int(ai_available),
+                    created_at,
+                    updated_at,
+                    course_id,
+                ),
             )
             note_id = int(cur.lastrowid)
             conn.executemany(
@@ -599,6 +610,43 @@ class Database:
                 chunk["embedding"] = json.loads(chunk.pop("embedding_json"))
                 chunks.append(chunk)
             return chunks
+
+    def list_searchable_document_chunks(
+        self,
+        course_id: int | None = None,
+        source_document_id: int | None = None,
+    ) -> list[dict]:
+        conditions = ["source_documents.status = 'ready'"]
+        parameters: list[int] = []
+        if course_id is not None:
+            conditions.append("source_documents.course_id = ?")
+            parameters.append(course_id)
+        if source_document_id is not None:
+            conditions.append("source_documents.id = ?")
+            parameters.append(source_document_id)
+        where_clause = " AND ".join(conditions)
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT document_chunks.*, source_documents.title AS source_title,
+                       source_documents.course_id, source_documents.source_type,
+                       source_documents.imported_at, source_documents.updated_at,
+                       courses.name AS course_name
+                FROM document_chunks
+                JOIN source_documents
+                  ON source_documents.id = document_chunks.source_document_id
+                JOIN courses ON courses.id = source_documents.course_id
+                WHERE {where_clause}
+                ORDER BY source_documents.id, document_chunks.position
+                """,
+                parameters,
+            ).fetchall()
+        chunks = []
+        for row in rows:
+            chunk = dict(row)
+            chunk["embedding"] = json.loads(chunk.pop("embedding_json"))
+            chunks.append(chunk)
+        return chunks
 
     def get_setting(self, key: str) -> str | None:
         with self.connect() as conn:

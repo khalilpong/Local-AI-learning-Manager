@@ -226,9 +226,12 @@ UI 已做响应式布局，支持桌面和移动端宽度。
 │   ├── schemas.py
 │   ├── settings.py
 │   ├── services
+│   │   ├── documents.py
 │   │   ├── embeddings.py
+│   │   ├── library.py
 │   │   ├── memory.py
-│   │   └── ollama.py
+│   │   ├── ollama.py
+│   │   └── retrieval.py
 │   ├── static
 │   │   ├── app.js
 │   │   └── styles.css
@@ -236,6 +239,8 @@ UI 已做响应式布局，支持桌面和移动端宽度。
 │       └── index.html
 ├── tests
 │   ├── test_api.py
+│   ├── test_document_parsers.py
+│   ├── test_library_service.py
 │   └── test_memory_service.py
 └── docs
     ├── screenshots
@@ -564,7 +569,7 @@ pip install sentence-transformers
 - [x] 编写项目截图和演示说明：截图保存在 `docs/screenshots/`（桌面版 + 移动版布局），README 新增 Screenshots 和 Demo Walkthrough 章节（六步演示流程：记录 → 复习 → 统计 → 检索 → 问答 → 周报）。
 - [x] 简历项目描述（见第 12 节）。
 
-### 阶段 5：完整学习工作流升级（设计完成，实施待启动）
+### 阶段 5：完整学习工作流升级（实施中）
 
 本阶段已经完成需求分析和架构选择，正式设计见：
 
@@ -577,12 +582,15 @@ pip install sentence-transformers
 #### 5A：课程资料库与本地导入
 
 - [x] 完成功能范围、数据模型、导入状态和验收标准设计。
-- [ ] 增加课程/学期层级和课程筛选。
-- [ ] 增加受管理的本地原始文件库。
-- [ ] 导入 Markdown、TXT、PDF、DOCX、PPTX，并接收和归档常见图片；图片在 5B OCR 完成前标记为 `ocr_required`。
-- [ ] 保存页码、幻灯片和标题层级等引用位置。
-- [ ] 使用 SHA-256 去重并支持失败重试。
-- [ ] 将文档分块加入统一搜索和问答。
+- [x] 增加课程、原始文档和文档 chunk 数据表，并为旧笔记加入可空课程/来源关联；旧数据保持兼容。
+- [x] 完成 Markdown、TXT、PDF、DOCX、PPTX 解析器和带引用位置的重叠分块；图片会明确返回 `ocr_required`。
+- [x] 完成课程管理、资料上传/列表/详情和失败重试 API；重复导入返回已有资料，缺失资源统一返回 404。
+- [x] 完成课程创建、批量文件导入、资料状态/失败重试界面，以及搜索和问答的课程筛选。
+- [x] 增加受管理的本地原始文件库，采用临时文件写入和原子移动，上传大小默认限制为 100 MB。
+- [x] 导入 Markdown、TXT、PDF、DOCX、PPTX，并接收和归档常见图片；图片在 5B OCR 完成前标记为 `ocr_required`。
+- [x] 保存页码、幻灯片和标题层级等引用位置。
+- [x] 使用 SHA-256 去重并支持失败重试；损坏资料保留原文件和可读错误状态。
+- [x] 将笔记和文档分块加入统一搜索和问答；文档结果返回课程、原始文件名和标题/页码/段落/幻灯片位置。
 
 #### 5B：截图、网页与 Notion
 
@@ -607,7 +615,7 @@ pip install sentence-transformers
 - [ ] 增加数据库 schema 版本和事务迁移。
 - [ ] 增加解析器、OCR、Notion 和存储诊断。
 
-当前进度边界：设计文档已经写入，代码实施尚未开始；下一步是在书面规格审核通过后，为 5A 编写测试驱动的实施计划。
+当前进度边界：5A 全部 6 个 Task（课程 schema、多格式解析器、受管理文件库、课程/资料 API、统一检索、课程资料库界面）均已实现、通过 `45 passed` 自动化测试，并完成桌面 + 移动浏览器实机验证：创建课程 → 导入 Markdown（解析为 3 个按标题分块的 chunk，状态 `ready`）→ SHA-256 去重（重复导入返回 `duplicate: true`）→ 统一搜索返回带「课程 · 标题层级」引用位置的文档结果并高亮命中词 → 课程范围问答只召回该课程 chunk → 移动端 375px 无横向溢出、控制台无错误。5A 已完整提交。下一步进入 5B（截图 OCR、网页采集、Notion 只读同步）。
 
 ## 12. 简历描述建议
 

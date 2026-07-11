@@ -18,6 +18,7 @@
         </a>
         <nav class="nav-list" aria-label="Main navigation">
           <a href="#compose" class="active">Create</a>
+          <a href="#library">Library</a>
           <a href="#search">Search</a>
           <a href="#study">Study</a>
           <a href="#stats">Stats</a>
@@ -53,6 +54,31 @@
           </div>
         </header>
 
+        <section class="panel library-panel" id="library">
+          <div class="section-heading">
+            <h2>Course library</h2>
+            <span id="libraryStatus" role="status">Local files</span>
+          </div>
+          <div class="library-controls">
+            <form id="courseForm" class="course-form">
+              <input name="name" type="text" aria-label="Course name" placeholder="Course name" required maxlength="120">
+              <input name="code" type="text" aria-label="Course code" placeholder="Code" maxlength="40">
+              <input name="term" type="text" aria-label="Course term" placeholder="Term" maxlength="80">
+              <button type="submit">Add course</button>
+            </form>
+            <form id="libraryImportForm" class="import-form">
+              <select id="courseSelect" name="course_id" aria-label="Import course" required>
+                <option value="">Loading courses...</option>
+              </select>
+              <input name="files" type="file" aria-label="Course files" multiple required accept=".md,.markdown,.txt,.pdf,.docx,.pptx,.png,.jpg,.jpeg,.webp">
+              <button type="submit">Import</button>
+            </form>
+          </div>
+          <div id="documentList" class="document-list">
+            <p class="muted">Select a course to view local files.</p>
+          </div>
+        </section>
+
         <section class="grid">
           <section class="panel compose-panel" id="compose">
             <div class="section-heading">
@@ -67,6 +93,12 @@
               <label>
                 Source
                 <input name="source" type="text" placeholder="project, english, tech" maxlength="80">
+              </label>
+              <label>
+                Course
+                <select id="noteCourseSelect" name="course_id" aria-label="Note course">
+                  <option value="">No course</option>
+                </select>
               </label>
               <label>
                 Note
@@ -84,6 +116,9 @@
             </div>
             <form id="searchForm" class="inline-form">
               <input name="q" type="search" placeholder="Search project ideas, English phrases, technical notes..." required>
+              <select id="searchCourseSelect" name="course_id" aria-label="Search course">
+                <option value="">All courses</option>
+              </select>
               <button type="submit">Search</button>
             </form>
             <div id="searchResults" class="result-list"></div>
@@ -145,6 +180,9 @@
                 <span>Cited local notes</span>
               </div>
               <form id="askForm" class="stack">
+                <select id="askCourseSelect" name="course_id" aria-label="Question course">
+                  <option value="">All courses</option>
+                </select>
                 <textarea name="question" placeholder="What did I learn about local AI this week?" required></textarea>
                 <button type="submit">Ask</button>
               </form>

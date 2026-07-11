@@ -6,6 +6,7 @@ from typing import Any
 
 from app.db import Database
 from app.services.embeddings import EmbeddingProvider, cosine_similarity, tokenize
+from app.services.retrieval import UnifiedRetrievalService
 
 
 class MemoryService:
@@ -13,6 +14,7 @@ class MemoryService:
         self.db = db
         self.embedder = embedder
         self.ai_client = ai_client
+        self.retrieval = UnifiedRetrievalService(db, embedder)
 
     @property
     def embedding_version(self) -> str:
@@ -46,6 +48,7 @@ class MemoryService:
         title: str,
         content: str,
         source: str = "",
+        course_id: int | None = None,
         created_at: datetime | None = None,
     ) -> dict:
         clean_title = title.strip()
@@ -55,6 +58,8 @@ class MemoryService:
             raise ValueError("Title is required")
         if not clean_content:
             raise ValueError("Content is required")
+        if course_id is not None:
+            self.db.get_course(course_id)
 
         ai = self.ai_client.summarize_and_tag(clean_title, clean_content)
         summary = str(ai.get("summary") or clean_content[:180]).strip()
@@ -74,6 +79,7 @@ class MemoryService:
             embedding_model=self.embedding_version,
             created_at=timestamp,
             updated_at=timestamp,
+            course_id=course_id,
         )
 
     def get_note(self, note_id: int) -> dict:
@@ -125,27 +131,22 @@ class MemoryService:
     def list_notes(self, limit: int = 100, offset: int = 0, tag: str | None = None) -> list[dict]:
         return self.db.list_notes(limit=limit, offset=offset, tag=tag)
 
-    def search_notes(self, query: str, limit: int = 10, tag: str | None = None) -> list[dict]:
-        clean_query = query.strip()
-        if not clean_query:
-            return self.list_notes(limit=limit, tag=tag)
-        query_embedding = self.embedder.embed(clean_query)
-        fts_ids = self.db.fts_search_ids(self._fts_query(clean_query), limit=limit * 2)
-        fts_rank = {note_id: index for index, note_id in enumerate(fts_ids)}
-        query_tokens = set(tokenize(clean_query))
-        scored: list[dict] = []
-        for note in self.db.list_notes(limit=1000, tag=tag):
-            vector_score = cosine_similarity(query_embedding, note.get("embedding"))
-            keyword_score = self._keyword_score(query_tokens, note)
-            fts_score = 0.0
-            if note["id"] in fts_rank:
-                fts_score = max(0.0, 1.0 - (fts_rank[note["id"]] * 0.05))
-            score = (0.65 * vector_score) + (0.25 * keyword_score) + (0.10 * fts_score)
-            result = {key: value for key, value in note.items() if key != "embedding"}
-            result["score"] = round(float(score), 6)
-            scored.append(result)
-        scored.sort(key=lambda item: (item["score"], item["created_at"]), reverse=True)
-        return scored[:limit]
+    def search_notes(
+        self,
+        query: str,
+        limit: int = 10,
+        tag: str | None = None,
+        *,
+        course_id: int | None = None,
+        source_document_id: int | None = None,
+    ) -> list[dict]:
+        return self.retrieval.search(
+            query,
+            limit=limit,
+            tag=tag,
+            course_id=course_id,
+            source_document_id=source_document_id,
+        )
 
     def similar_notes(self, note_id: int, limit: int = 5) -> list[dict]:
         source = self.get_note(note_id)
@@ -160,11 +161,23 @@ class MemoryService:
         scored.sort(key=lambda item: item["score"], reverse=True)
         return scored[:limit]
 
-    def ask_question(self, question: str, limit: int = 5) -> dict:
+    def ask_question(
+        self,
+        question: str,
+        limit: int = 5,
+        *,
+        course_id: int | None = None,
+        source_document_id: int | None = None,
+    ) -> dict:
         clean_question = question.strip()
         if not clean_question:
             raise ValueError("Question is required")
-        sources = self.search_notes(clean_question, limit=limit)
+        sources = self.search_notes(
+            clean_question,
+            limit=limit,
+            course_id=course_id,
+            source_document_id=source_document_id,
+        )
         answer = self.ai_client.answer_question(clean_question, sources)
         return {
             "question": clean_question,

@@ -7,6 +7,7 @@ class NoteCreate(BaseModel):
     title: str = Field(min_length=1, max_length=160)
     content: str = Field(min_length=1)
     source: str = Field(default="", max_length=80)
+    course_id: int | None = Field(default=None, ge=1)
 
 
 class NoteUpdate(BaseModel):
@@ -18,6 +19,8 @@ class NoteUpdate(BaseModel):
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=500)
     limit: int = Field(default=5, ge=1, le=10)
+    course_id: int | None = Field(default=None, ge=1)
+    source_document_id: int | None = Field(default=None, ge=1)
 
 
 class WeeklyReviewRequest(BaseModel):

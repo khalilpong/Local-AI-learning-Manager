@@ -111,7 +111,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 title=payload.title,
                 content=payload.content,
                 source=payload.source,
+                course_id=payload.course_id,
             )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Course not found") from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return strip_embedding(note)
@@ -241,15 +244,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @app.get("/api/search")
-    def search_notes(q: str, request: Request, limit: int = 10, tag: str | None = None):
+    def search_notes(
+        q: str,
+        request: Request,
+        limit: int = 10,
+        tag: str | None = None,
+        course_id: int | None = None,
+        source_document_id: int | None = None,
+    ):
         limit = min(max(limit, 1), 50)
-        results = get_service(request).search_notes(q, limit=limit, tag=tag)
+        results = get_service(request).search_notes(
+            q,
+            limit=limit,
+            tag=tag,
+            course_id=course_id,
+            source_document_id=source_document_id,
+        )
         return {"query": q, "results": results}
 
     @app.post("/api/ask")
     def ask_question(payload: AskRequest, request: Request):
         try:
-            return get_service(request).ask_question(payload.question, limit=payload.limit)
+            return get_service(request).ask_question(
+                payload.question,
+                limit=payload.limit,
+                course_id=payload.course_id,
+                source_document_id=payload.source_document_id,
+            )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

@@ -1,3 +1,4 @@
+import io
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -5,6 +6,7 @@ from pathlib import Path
 
 from app.db import Database
 from app.services.embeddings import HashEmbeddingProvider
+from app.services.library import LibraryService
 from app.services.memory import MemoryService
 
 
@@ -40,7 +42,54 @@ def make_service(root: Path):
     )
 
 
+def make_services(root: Path):
+    memory = make_service(root)
+    library = LibraryService(
+        db=memory.db,
+        embedder=memory.embedder,
+        library_dir=root / "library",
+        max_upload_bytes=1024 * 1024,
+    )
+    return memory, library
+
+
 class MemoryServiceTest(unittest.TestCase):
+    def test_unified_search_returns_document_chunk_with_citation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            memory, library = make_services(Path(tmp))
+            course = library.create_course(name="Information Theory")
+            library.import_file(
+                course["id"],
+                "entropy.md",
+                "text/markdown",
+                io.BytesIO(b"# Entropy\nEntropy measures uncertainty."),
+            )
+
+            results = memory.search_notes("uncertainty", course_id=course["id"])
+
+            self.assertEqual(results[0]["kind"], "document")
+            self.assertEqual(results[0]["source_title"], "entropy.md")
+            self.assertEqual(results[0]["location_label"], "Entropy")
+            self.assertEqual(results[0]["course_name"], "Information Theory")
+
+    def test_question_sources_include_document_location(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            memory, library = make_services(Path(tmp))
+            course = library.create_course(name="Networks")
+            library.import_file(
+                course["id"],
+                "routing.md",
+                "text/markdown",
+                io.BytesIO(b"# Bellman-Ford\nRouting uses relaxation."),
+            )
+
+            answer = memory.ask_question(
+                "How does routing update paths?", course_id=course["id"]
+            )
+
+            self.assertEqual(answer["sources"][0]["location_label"], "Bellman-Ford")
+            self.assertIn("routing.md", answer["answer"])
+
     def test_create_note_stores_summary_tags_and_embedding(self):
         with tempfile.TemporaryDirectory() as tmp:
             service = make_service(Path(tmp))

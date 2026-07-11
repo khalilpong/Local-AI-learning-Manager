@@ -19,6 +19,14 @@ const noteModal = document.querySelector("#noteModal");
 const modalTitle = document.querySelector("#modalTitle");
 const modalBody = document.querySelector("#modalBody");
 const modalClose = document.querySelector("#modalClose");
+const courseForm = document.querySelector("#courseForm");
+const libraryImportForm = document.querySelector("#libraryImportForm");
+const courseSelect = document.querySelector("#courseSelect");
+const noteCourseSelect = document.querySelector("#noteCourseSelect");
+const searchCourseSelect = document.querySelector("#searchCourseSelect");
+const askCourseSelect = document.querySelector("#askCourseSelect");
+const documentList = document.querySelector("#documentList");
+const libraryStatus = document.querySelector("#libraryStatus");
 
 let activeTag = null;
 let lastQuery = "";
@@ -106,9 +114,13 @@ function highlightText(value, query) {
 }
 
 async function requestJson(url, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  if (!(options.body instanceof FormData) && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
   const response = await fetch(url, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
     ...options,
+    headers,
   });
   if (response.status === 204) {
     return null;
@@ -149,8 +161,21 @@ function renderNote(note) {
 
 function renderResult(note, query) {
   const score = typeof note.score === "number" ? Math.round(note.score * 100) : 0;
+  if (note.kind === "document") {
+    const citation = [note.course_name, note.location_label].filter(Boolean).join(" · ");
+    return `
+      <article class="result-item document-result" data-kind="document" data-document-id="${note.source_document_id}">
+        <div>
+          <strong>${highlightText(note.source_title || note.title, query)}</strong>
+          <span class="citation-label">${escapeHtml(citation)}</span>
+          <p>${highlightText(note.content || "", query)}</p>
+        </div>
+        <span class="score">${score}</span>
+      </article>
+    `;
+  }
   return `
-    <article class="result-item" data-note-id="${note.id}">
+    <article class="result-item" data-kind="note" data-note-id="${note.id}">
       <div>
         <strong>${highlightText(note.title, query)}</strong>
         <p>${highlightText(note.summary || note.content || "", query)}</p>
@@ -159,6 +184,83 @@ function renderResult(note, query) {
       <span class="score">${score}</span>
     </article>
   `;
+}
+
+function courseOptions(courses, emptyLabel) {
+  return [
+    `<option value="">${emptyLabel}</option>`,
+    ...courses.map((course) => {
+      const label = [course.code, course.name, course.term].filter(Boolean).join(" · ");
+      return `<option value="${course.id}">${escapeHtml(label)}</option>`;
+    }),
+  ].join("");
+}
+
+async function loadCourses(preferredCourseId = null) {
+  const previousImport = preferredCourseId || courseSelect.value;
+  const previousNote = noteCourseSelect.value;
+  const previousSearch = searchCourseSelect.value;
+  const previousAsk = askCourseSelect.value;
+  const data = await requestJson("/api/courses");
+  const courses = data.courses;
+
+  courseSelect.innerHTML = courses.length
+    ? courseOptions(courses, "Select course")
+    : '<option value="">Create a course first</option>';
+  courseSelect.disabled = !courses.length;
+  libraryImportForm.querySelector("button[type=submit]").disabled = !courses.length;
+  noteCourseSelect.innerHTML = courseOptions(courses, "No course");
+  searchCourseSelect.innerHTML = courseOptions(courses, "All courses");
+  askCourseSelect.innerHTML = courseOptions(courses, "All courses");
+
+  if (courses.length) {
+    const available = new Set(courses.map((course) => String(course.id)));
+    courseSelect.value = available.has(String(previousImport))
+      ? String(previousImport)
+      : String(courses[0].id);
+    if (available.has(previousNote)) noteCourseSelect.value = previousNote;
+    if (available.has(previousSearch)) searchCourseSelect.value = previousSearch;
+    if (available.has(previousAsk)) askCourseSelect.value = previousAsk;
+  }
+  await loadDocuments();
+}
+
+function renderDocument(document) {
+  const locationCount = document.chunks?.length || 0;
+  const retry = document.status === "failed"
+    ? `<button type="button" class="link-button" data-retry-document="${document.id}">Retry</button>`
+    : "";
+  return `
+    <article class="document-item">
+      <div class="document-main">
+        <strong title="${escapeHtml(document.title)}">${escapeHtml(document.title)}</strong>
+        <span>${escapeHtml(document.source_type.toUpperCase())} · ${locationCount} chunks</span>
+      </div>
+      <div class="document-state">
+        <span class="status-badge status-${escapeHtml(document.status)}">${escapeHtml(document.status.replaceAll("_", " "))}</span>
+        ${retry}
+      </div>
+      ${document.error_message ? `<p>${escapeHtml(document.error_message)}</p>` : ""}
+    </article>
+  `;
+}
+
+async function loadDocuments() {
+  const courseId = courseSelect.value;
+  if (!courseId) {
+    documentList.innerHTML = '<p class="muted">Create a course to import files.</p>';
+    libraryStatus.textContent = "No courses";
+    return;
+  }
+  try {
+    const params = new URLSearchParams({ course_id: courseId });
+    const data = await requestJson(`/api/library/documents?${params.toString()}`);
+    documentList.innerHTML = data.documents.map(renderDocument).join("") ||
+      '<p class="muted">No files in this course.</p>';
+    libraryStatus.textContent = `${data.documents.length} local file${data.documents.length === 1 ? "" : "s"}`;
+  } catch (error) {
+    libraryStatus.textContent = error.message;
+  }
 }
 
 async function loadTags() {
@@ -338,6 +440,7 @@ noteForm.addEventListener("submit", async (event) => {
         title: form.get("title"),
         source: form.get("source"),
         content: form.get("content"),
+        course_id: form.get("course_id") ? Number(form.get("course_id")) : null,
       }),
     });
     noteForm.reset();
@@ -361,6 +464,7 @@ searchForm.addEventListener("submit", async (event) => {
   try {
     const params = new URLSearchParams({ q: query });
     if (activeTag) params.set("tag", activeTag);
+    if (form.get("course_id")) params.set("course_id", form.get("course_id"));
     const data = await requestJson(`/api/search?${params.toString()}`);
     searchResults.innerHTML =
       data.results.map((note) => renderResult(note, query)).join("") ||
@@ -377,10 +481,18 @@ askForm.addEventListener("submit", async (event) => {
   try {
     const data = await requestJson("/api/ask", {
       method: "POST",
-      body: JSON.stringify({ question: form.get("question") }),
+      body: JSON.stringify({
+        question: form.get("question"),
+        course_id: form.get("course_id") ? Number(form.get("course_id")) : null,
+      }),
     });
     const sources = data.sources
-      .map((source) => `<li>${escapeHtml(source.title)}</li>`)
+      .map((source) => {
+        const location = source.kind === "document" && source.location_label
+          ? ` · ${source.location_label}`
+          : "";
+        return `<li>${escapeHtml(source.title)}${escapeHtml(location)}</li>`;
+      })
       .join("");
     answerBox.innerHTML = `
       <div class="md-content">${renderMarkdown(data.answer)}</div>
@@ -455,7 +567,70 @@ searchResults.addEventListener("click", (event) => {
   }
   const card = findNoteCard(event.target);
   if (!card) return;
+  if (card.dataset.kind === "document") return;
   openNoteModal(Number(card.dataset.noteId), { editing: false });
+});
+
+courseForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = new FormData(courseForm);
+  libraryStatus.textContent = "Adding course...";
+  try {
+    const course = await requestJson("/api/courses", {
+      method: "POST",
+      body: JSON.stringify({
+        name: form.get("name"),
+        code: form.get("code"),
+        term: form.get("term"),
+      }),
+    });
+    courseForm.reset();
+    await loadCourses(course.id);
+  } catch (error) {
+    libraryStatus.textContent = error.message;
+  }
+});
+
+libraryImportForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const files = Array.from(libraryImportForm.elements.files.files || []);
+  const courseId = courseSelect.value;
+  if (!files.length || !courseId) return;
+
+  const failures = [];
+  for (const [index, file] of files.entries()) {
+    libraryStatus.textContent = `Importing ${index + 1} of ${files.length}...`;
+    const body = new FormData();
+    body.set("course_id", courseId);
+    body.set("file", file);
+    try {
+      await requestJson("/api/library/import", { method: "POST", body });
+    } catch (error) {
+      failures.push(`${file.name}: ${error.message}`);
+    }
+  }
+  libraryImportForm.elements.files.value = "";
+  await loadDocuments();
+  if (failures.length) {
+    libraryStatus.textContent = `${files.length - failures.length} imported, ${failures.length} failed`;
+  }
+});
+
+courseSelect.addEventListener("change", loadDocuments);
+documentList.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-retry-document]");
+  if (!button) return;
+  button.disabled = true;
+  libraryStatus.textContent = "Retrying...";
+  try {
+    await requestJson(`/api/library/documents/${button.dataset.retryDocument}/retry`, {
+      method: "POST",
+    });
+    await loadDocuments();
+  } catch (error) {
+    libraryStatus.textContent = error.message;
+    button.disabled = false;
+  }
 });
 
 async function deleteNote(noteId) {
@@ -618,3 +793,6 @@ loadTags();
 loadStudyQueue();
 loadStats();
 loadModels();
+loadCourses().catch((error) => {
+  libraryStatus.textContent = error.message;
+});

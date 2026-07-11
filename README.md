@@ -7,13 +7,15 @@ machine for summaries, tags, question answering, and weekly reviews.
 ## What It Does
 
 - Create, edit, and delete notes for ideas, projects, English sentences, and technical notes.
+- Organize notes and source files by course and term.
+- Import Markdown, TXT, PDF, DOCX, PPTX, and common image files into a managed local library.
 - Automatically summarize and tag notes (regenerated on every edit).
 - Review notes with a spaced-repetition study queue (simplified SM-2, like Anki).
 - Track learning stats: day streak, notes per week, due reviews, 14-day activity.
-- Search with local semantic embeddings plus keyword matching, with matched terms highlighted.
+- Search notes and document chunks together with local semantic embeddings plus keyword matching.
 - Filter notes and search results by tag.
 - View a note's full detail alongside its most similar notes, with Markdown rendering.
-- Ask questions over your notes with source citations.
+- Ask questions over notes and course files with file, page, slide, paragraph, or heading citations.
 - Generate weekly reviews from local notes.
 - Export all notes as a single Markdown file for backup.
 - Keyboard shortcuts: `/` search, `n` new note, `Esc` close dialog.
@@ -27,7 +29,7 @@ Responsive layout on a phone-sized window: [dashboard-mobile.png](docs/screensho
 
 ## Demo Walkthrough
 
-1. **Capture** — press `n`, type a thought (Markdown supported), hit
+1. **Capture** — create a course, import existing study files, or press `n` and type a thought (Markdown supported), then hit
    *Save note*. A one-sentence summary and topic tags are generated
    automatically (Ollama when available, local fallback otherwise).
 2. **Study** — the note joins the spaced-repetition queue. Recall it from
@@ -36,8 +38,8 @@ Responsive layout on a phone-sized window: [dashboard-mobile.png](docs/screensho
 3. **Track** — the stats panel shows your day streak, due reviews, and a
    14-day activity chart.
 4. **Retrieve** — press `/` and search in English or Chinese (CJK bigram
-   matching), filter by tag chips, or open a note to see its most similar
-   neighbours.
+   matching), filter by course or tag, and follow the file and location shown
+   on document results.
 5. **Ask** — question your own notes in natural language and get a cited,
    Markdown-formatted answer.
 6. **Reflect** — generate a weekly review with themes, ideas to revisit,
@@ -47,6 +49,7 @@ Responsive layout on a phone-sized window: [dashboard-mobile.png](docs/screensho
 
 - `FastAPI` backend, bound to `127.0.0.1` by default.
 - `SQLite` database under `./data/memory.db` by default.
+- Managed originals under `./data/library` by default, with SHA-256 duplicate detection.
 - Local embedding provider with deterministic hashing by default.
 - Optional stronger local embeddings through `sentence-transformers`.
 - `Ollama` local LLM integration at `http://127.0.0.1:11434`.
@@ -99,6 +102,8 @@ Copy `.env.example` to `.env` or export variables in your shell:
 
 ```bash
 export MEMORY_DB_PATH=./data/memory.db
+export MEMORY_LIBRARY_DIR=./data/library
+export MEMORY_MAX_UPLOAD_MB=100
 export MEMORY_AI_MODE=auto
 export OLLAMA_MODEL=qwen2.5
 ```
@@ -124,6 +129,31 @@ pip install sentence-transformers
 
 You can also switch the Ollama model from the sidebar dropdown; the choice
 is persisted in SQLite and survives restarts.
+
+## Course Library
+
+Create a course in the **Course library** panel, then select one or more files
+to import. Each original is copied into `MEMORY_LIBRARY_DIR`; moving or deleting
+the source file later does not break the local library. The default maximum is
+100 MB per file and can be changed with `MEMORY_MAX_UPLOAD_MB`.
+
+Supported inputs:
+
+| Format | Indexed location |
+| --- | --- |
+| Markdown | Heading |
+| TXT | Text document |
+| PDF | Page number |
+| DOCX | Paragraph and heading |
+| PPTX | Slide number and title |
+| PNG, JPEG, WebP | Stored as `ocr_required` until local OCR is added |
+
+Identical file content is detected by SHA-256 and returns the existing library
+record instead of storing another copy. A damaged document remains in the
+library with `failed` status and a readable error; use **Retry** after replacing
+or repairing the parser environment. Search and Ask can be limited to one
+course, and document sources include the original filename plus their heading,
+page, paragraph, or slide label.
 
 ## Tests
 

@@ -33,6 +33,13 @@ def test_homepage_renders_app_shell(tmp_path, monkeypatch):
     assert response.status_code == 200
     assert "Personal Memory" in response.text
     assert "Local only" in response.text
+    assert 'id="library"' in response.text
+    assert 'id="courseForm"' in response.text
+    assert 'id="courseSelect"' in response.text
+    assert 'id="libraryImportForm"' in response.text
+    assert 'id="documentList"' in response.text
+    assert 'id="searchCourseSelect"' in response.text
+    assert 'id="askCourseSelect"' in response.text
 
 
 def test_favicon_does_not_log_404(tmp_path, monkeypatch):
@@ -266,6 +273,24 @@ def test_create_course_and_import_markdown_through_api(tmp_path, monkeypatch):
     assert detail.json()["stored_filename"].endswith("lecture.md")
 
 
+def test_created_note_can_be_assigned_to_course(tmp_path, monkeypatch):
+    configure_library_test_app(tmp_path, monkeypatch)
+    client = TestClient(create_app())
+    course = client.post("/api/courses", json={"name": "Algorithms"}).json()
+
+    created = client.post(
+        "/api/notes",
+        json={
+            "title": "Dynamic programming",
+            "content": "Optimal substructure supports recurrence relations.",
+            "course_id": course["id"],
+        },
+    )
+
+    assert created.status_code == 201
+    assert created.json()["course_id"] == course["id"]
+
+
 def test_library_api_reports_duplicate_and_missing_resources(tmp_path, monkeypatch):
     configure_library_test_app(tmp_path, monkeypatch)
     client = TestClient(create_app())
@@ -312,3 +337,35 @@ def test_failed_document_can_be_retried_through_api(tmp_path, monkeypatch):
     assert retried.status_code == 200
     assert retried.json()["status"] == "failed"
     assert retried.json()["error_message"]
+
+
+def test_search_and_ask_filter_document_sources_by_course(tmp_path, monkeypatch):
+    configure_library_test_app(tmp_path, monkeypatch)
+    client = TestClient(create_app())
+    target = client.post("/api/courses", json={"name": "Target"}).json()
+    other = client.post("/api/courses", json={"name": "Other"}).json()
+    for course, filename in ((target, "target.md"), (other, "other.md")):
+        client.post(
+            "/api/library/import",
+            data={"course_id": str(course["id"])},
+            files={
+                "file": (
+                    filename,
+                    f"# Citation\nRouting uses repeated relaxation. Source: {filename}".encode(),
+                    "text/markdown",
+                )
+            },
+        )
+
+    searched = client.get(
+        "/api/search", params={"q": "routing relaxation", "course_id": target["id"]}
+    )
+    asked = client.post(
+        "/api/ask",
+        json={"question": "How does routing work?", "course_id": target["id"]},
+    )
+
+    assert searched.status_code == 200
+    assert {item["course_id"] for item in searched.json()["results"]} == {target["id"]}
+    assert asked.status_code == 200
+    assert {item["course_id"] for item in asked.json()["sources"]} == {target["id"]}

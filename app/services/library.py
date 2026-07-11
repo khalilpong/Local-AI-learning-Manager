@@ -77,7 +77,7 @@ class LibraryService:
         now = datetime.now(timezone.utc).isoformat()
         document = self.db.insert_source_document(
             course_id=course_id,
-            title=Path(safe_filename).stem,
+            title=safe_filename,
             source_type=document_type,
             mime_type=mime_type,
             managed_path=str(managed_path),
@@ -136,7 +136,6 @@ class LibraryService:
             self.db.insert_document_chunks(document_id, indexed_chunks)
             self.db.update_source_document(
                 document_id,
-                title=parsed.title,
                 status="ready",
                 error_message="",
                 updated_at=now,

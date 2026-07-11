@@ -26,7 +26,8 @@ body {
 
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 
@@ -52,7 +53,8 @@ button:disabled {
 }
 
 input,
-textarea {
+textarea,
+select {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -70,7 +72,8 @@ textarea {
 }
 
 input:focus,
-textarea:focus {
+textarea:focus,
+select:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(22, 124, 104, 0.12);
 }
@@ -240,6 +243,110 @@ textarea:focus {
   grid-template-columns: minmax(320px, 0.8fr) minmax(360px, 1.2fr);
 }
 
+.library-panel {
+  margin-bottom: 18px;
+}
+
+.library-controls {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.course-form,
+.import-form {
+  display: grid;
+  gap: 8px;
+}
+
+.course-form {
+  grid-template-columns: minmax(160px, 1fr) minmax(80px, 0.35fr) minmax(100px, 0.45fr) auto;
+}
+
+.import-form {
+  grid-template-columns: minmax(150px, 0.45fr) minmax(220px, 1fr) auto;
+}
+
+.document-list {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  margin-top: 14px;
+}
+
+.document-item {
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 11px 12px;
+}
+
+.document-main {
+  min-width: 0;
+}
+
+.document-main strong,
+.document-main span {
+  display: block;
+}
+
+.document-main strong {
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-main span,
+.document-item p {
+  color: var(--muted);
+  font-size: 0.75rem;
+  margin: 3px 0 0;
+}
+
+.document-item p {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+}
+
+.document-state {
+  align-items: flex-end;
+  display: grid;
+  gap: 5px;
+  justify-items: end;
+}
+
+.status-badge {
+  background: #e9efec;
+  border-radius: 4px;
+  color: #4d5c56;
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 4px 6px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.status-ready {
+  background: #dff2e8;
+  color: #176143;
+}
+
+.status-ocr_required,
+.status-partial {
+  background: #fff0c7;
+  color: #80570f;
+}
+
+.status-failed {
+  background: #f9dfda;
+  color: #9a3427;
+}
+
 .lower-grid {
   align-items: start;
   grid-template-columns: minmax(420px, 1fr) 380px;
@@ -293,6 +400,10 @@ label {
   grid-template-columns: 1fr auto;
 }
 
+.search-panel .inline-form {
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 0.38fr) auto;
+}
+
 .result-list,
 .note-list {
   display: grid;
@@ -306,6 +417,18 @@ label {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 14px;
+}
+
+.document-result {
+  cursor: default;
+}
+
+.citation-label {
+  color: var(--accent-dark);
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-top: 4px;
 }
 
 .result-item {
@@ -771,8 +894,13 @@ a.ghost-button {
 
   .grid,
   .lower-grid,
-  .study-grid {
+  .study-grid,
+  .library-controls {
     grid-template-columns: 1fr;
+  }
+
+  .course-form {
+    grid-template-columns: minmax(0, 1fr) minmax(80px, 0.35fr) minmax(100px, 0.45fr) auto;
   }
 }
 
@@ -791,5 +919,15 @@ a.ghost-button {
 
   .inline-form {
     grid-template-columns: 1fr;
+  }
+
+  .course-form,
+  .import-form,
+  .search-panel .inline-form {
+    grid-template-columns: 1fr;
+  }
+
+  .document-list {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
